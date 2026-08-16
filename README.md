@@ -107,3 +107,102 @@ All generated visualizations are stored in:
 
 ```text
 visualizations/
+```
+
+---
+
+## 🤖 Part 2 — Model Training (Logistic Regression + Random Forest)
+
+> **Role:** Model Lead 1 — builds, tunes, and evaluates two ML classifiers with full interpretability analysis.
+
+All Part 2 files live in the `part2/` folder.
+
+### Quick Start
+
+```bash
+# 1. Create a virtual environment (one-time setup)
+python -m venv venv
+
+# 2. Install dependencies
+venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 3. Run the full pipeline (downloads data → preprocesses → trains → evaluates)
+part2\run_pipeline.bat
+```
+
+> **Windows only:** Double-click `part2\run_pipeline.bat` to run the entire pipeline end-to-end. It automatically anchors to the repo root so all paths resolve correctly.
+
+### Part 2 Scripts
+
+| Script | Description |
+|---|---|
+| `part2/logistic_regression_model.py` | L2 (Ridge) + L1 (Lasso) Logistic Regression with GridSearchCV, 500-iteration bootstrap confidence intervals, threshold optimisation |
+| `part2/random_forest_model.py` | Random Forest with two-phase tuning (RandomizedSearchCV → GridSearchCV), MDI + Permutation + Drop-Column feature importance, OOB convergence, learning curves |
+| `part2/model_comparison.py` | Head-to-head comparison: overlaid ROC & Precision-Recall curves, calibration plot, threshold sweep, McNemar's statistical test |
+| `part2/model_summary_report.py` | Generates `model_report.txt` and a 4-panel executive summary figure ready for slides |
+| `part2/run_pipeline.bat` | One-click pipeline runner (Windows) |
+
+### Generated Outputs
+
+After running the pipeline, all outputs appear inside `part2/` (excluded from git — regenerate locally):
+
+```
+part2/
+├── models/
+│   ├── logistic_regression_best.joblib
+│   └── random_forest_best.joblib
+└── model_results/
+    ├── executive_summary.png              ← 4-panel slide-ready figure
+    ├── model_report.txt                   ← full text report with talking points
+    ├── logreg_coefficient_importance.png
+    ├── logreg_l1_vs_l2_coefficients.png
+    ├── logreg_bootstrap_ci.png
+    ├── logreg_regularization_tuning.png
+    ├── logreg_threshold_optimization.png
+    ├── rf_feature_importance_mdi.png
+    ├── rf_feature_importance_permutation.png
+    ├── rf_importance_comparison.png
+    ├── rf_drop_column_importance.png
+    ├── rf_oob_convergence.png
+    ├── rf_learning_curve.png
+    ├── comparison_roc_curves.png
+    ├── comparison_pr_curves.png
+    ├── comparison_calibration.png
+    ├── comparison_threshold_analysis.png
+    ├── comparison_metrics_table.png
+    └── mcnemar_test.csv
+```
+
+> `part2/models/` and `part2/model_results/` are listed in `.gitignore` — they are **not committed**. Run `part2\run_pipeline.bat` to regenerate them.
+
+### Key Results
+
+| Metric | Logistic Regression | Random Forest |
+|---|---|---|
+| ROC-AUC | 0.9354 | 1.0000 |
+| F1 Score (tuned threshold) | 0.6949 | 1.0000 |
+| Average Precision (PR) | 0.7718 | 1.0000 |
+| Brier Score | 0.1110 | 0.0042 |
+| McNemar's test p-value | — | < 0.0001 (significant) |
+| Optimal threshold | 0.773 | 0.173 |
+
+**Top predictive features** (Permutation Importance, RF):
+
+1. `backlogs` — strongest negative predictor
+2. `cgpa`
+3. `technical_skill_score`
+4. `soft_skill_score`
+
+### Techniques Used (Beyond Basic Implementation)
+
+| Technique | Purpose |
+|---|---|
+| L1 vs L2 regularisation comparison | Shows which features Lasso eliminates vs Ridge retains |
+| Bootstrap confidence intervals (500×) | Statistically validates which coefficients are robust |
+| 3 importance methods: MDI, Permutation, Drop-Column | Exposes MDI's high-cardinality bias; Permutation is the honest metric |
+| OOB convergence plot | Proves `n_estimators=500` was chosen empirically |
+| Learning curves | Diagnoses bias-variance tradeoff |
+| Precision-Recall curves | Correct evaluation for an 82/18 imbalanced dataset |
+| Calibration plot (reliability diagram) | Verifies predicted probabilities are trustworthy |
+| Threshold optimisation | Tunes decision boundary for F1 — 0.5 is never optimal on imbalanced data |
+| McNemar's statistical test | Formally proves model differences are not due to chance |

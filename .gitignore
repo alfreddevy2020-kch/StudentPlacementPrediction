@@ -86,3 +86,17 @@ data/processed/
 
 # Uncomment if you don't want generated graphs in GitHub
 # visualizations/
+implementation_plan.md
+
+# ==============================
+# Virtual environment
+# ==============================
+
+venv/
+
+# ==============================
+# Model outputs (generated)
+# ==============================
+
+part2/models/
+part2/model_results/
