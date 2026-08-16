@@ -1,0 +1,88 @@
+# ==============================
+# Python
+# ==============================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ==============================
+# IDE / Editor
+# ==============================
+
+.vscode/
+.idea/
+
+# ==============================
+# Jupyter Notebook
+# ==============================
+
+.ipynb_checkpoints/
+
+# ==============================
+# Environment / Secrets
+# ==============================
+
+.env
+.env.*
+!.env.example
+
+# ==============================
+# OS generated files
+# ==============================
+
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Python tools
+# ==============================
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================
+# Logs
+# ==============================
+
+*.log
+
+# ==============================
+# Temporary files
+# ==============================
+
+*.tmp
+*.temp
+
+# ==============================
+# Machine Learning generated files
+# ==============================
+
+*.pkl
+*.joblib
+*.h5
+*.keras
+
+# ==============================
+# Processed / generated data
+# ==============================
+
+# Keep raw dataset out of GitHub if required by its license
+data/raw/
+
+# Generated processed datasets
+data/processed/
+
+# ==============================
+# Generated visualizations
+# ==============================
+
+# Uncomment if you don't want generated graphs in GitHub
+# visualizations/
