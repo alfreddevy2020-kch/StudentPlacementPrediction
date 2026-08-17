@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
@@ -108,7 +109,12 @@ print(numerical_features)
 
 print("\n========== TRAIN / TEST SPLIT ==========")
 
-X_train, X_test, y_train, y_test = train_test_split(
+X_train: pd.DataFrame
+X_test: pd.DataFrame
+y_train: pd.Series
+y_test: pd.Series
+
+X_train, X_test, y_train, y_test = train_test_split(  # type: ignore
     X,
     y,
     test_size=0.20,
@@ -317,7 +323,16 @@ class_weights_df.to_csv(
 
 
 # ============================================================
-# 18. FINAL INFORMATION
+# 18. SAVE FITTED PREPROCESSOR (for API inference)
+# ============================================================
+
+os.makedirs("part2/models", exist_ok=True)
+joblib.dump(preprocessor, "part2/models/preprocessor.joblib")
+print("\nPreprocessor saved to: part2/models/preprocessor.joblib")
+
+
+# ============================================================
+# 19. FINAL INFORMATION
 # ============================================================
 
 print("\n========== PREPROCESSING COMPLETE ==========")
