@@ -18,6 +18,14 @@ echo.
 
 SET PYTHON=venv\Scripts\python.exe -X utf8
 
+REM Step 0: Ensure required directories exist
+echo [STEP 0] Ensuring required directories exist ...
+if not exist "data\raw" mkdir "data\raw"
+if not exist "data\processed" mkdir "data\processed"
+if not exist "part2\models" mkdir "part2\models"
+if not exist "part2\model_results" mkdir "part2\model_results"
+echo.
+
 REM Step 1: Download dataset
 echo [STEP 1/5] Downloading dataset ...
 %PYTHON% download_dataset.py
