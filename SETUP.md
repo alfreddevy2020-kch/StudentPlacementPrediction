@@ -167,7 +167,7 @@ venv/bin/python -m pip install xgboost fastapi uvicorn streamlit requests plotly
 
 ## 5. Download and place the dataset
 
-### Step 1 — Download via kagglehub
+Simply run the download script, which will download the dataset via `kagglehub` and automatically copy and rename the file to `data/raw/student_placement.csv`.
 
 ```bash
 # Windows
@@ -176,32 +176,6 @@ venv\Scripts\python.exe download_dataset.py
 # Mac/Linux
 venv/bin/python download_dataset.py
 ```
-
-This prints a cache path like:
-```
-Path to dataset files: C:\Users\<you>\.cache\kagglehub\datasets\suvidyasonawane\student-academic-placement-performance-dataset\versions\1\
-```
-
-### Step 2 — Copy the CSV to the expected location
-
-```bash
-# Create the target directory
-mkdir data\raw          # Windows (cmd/PowerShell: mkdir -Force data\raw)
-# mkdir -p data/raw     # Mac/Linux
-
-# Copy the file
-copy "<printed-path>\student_placement.csv" data\raw\           # Windows
-# cp "<printed-path>/student_placement.csv" data/raw/           # Mac/Linux
-```
-
-> **Finding the file if the printed path is wrong:**
-> ```bash
-> # Windows (PowerShell)
-> Get-ChildItem -Path $env:USERPROFILE\.cache -Recurse -Filter "student_placement.csv"
->
-> # Mac/Linux
-> find ~/.cache -name "student_placement.csv"
-> ```
 
 ### Verification
 
@@ -762,11 +736,8 @@ venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\python.exe -m pip install -r requirements.txt
 venv\Scripts\python.exe -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 
-# Download dataset
+# Download dataset (automatically places CSV in data/raw/)
 venv\Scripts\python.exe download_dataset.py
-# ⚠ NOTE: copy the CSV manually from the printed path to data\raw\
-mkdir data\raw -Force
-# copy "<printed-kagglehub-cache-path>\student_placement.csv" data\raw\
 
 # Preprocess
 venv\Scripts\python.exe preprocessing.py
@@ -800,11 +771,8 @@ venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -r requirements.txt
 venv/bin/python -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 
-# Download dataset
+# Download dataset (automatically places CSV in data/raw/)
 venv/bin/python download_dataset.py
-# ⚠ NOTE: copy the CSV manually from the printed path to data/raw/
-mkdir -p data/raw
-# cp "<printed-kagglehub-cache-path>/student_placement.csv" data/raw/
 
 # Preprocess
 venv/bin/python preprocessing.py
