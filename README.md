@@ -206,3 +206,63 @@ part2/
 | Calibration plot (reliability diagram) | Verifies predicted probabilities are trustworthy |
 | Threshold optimisation | Tunes decision boundary for F1 — 0.5 is never optimal on imbalanced data |
 | McNemar's statistical test | Formally proves model differences are not due to chance |
+
+---
+
+# 🚀 Part 6 — Model Serving & Application Integration
+
+> **Role:** Backend / API Developer — integrates the trained ML model with
+> a FastAPI prediction service and Streamlit frontend.
+
+## Overview
+
+The trained machine learning model is exposed through a REST API so that
+the frontend can send student information and receive a placement
+prediction.
+
+The application follows this architecture:
+
+```text
+Streamlit Frontend
+        │
+        │ POST /api/v1/predict
+        │ JSON
+        ▼
+FastAPI Prediction API
+        │
+        ▼
+Pydantic Input Validation
+        │
+        ▼
+Raw Student Data
+        │
+        ▼
+preprocessor.joblib
+        │
+        ├── StandardScaler
+        │
+        └── OneHotEncoder
+        │
+        ▼
+17 Processed Features
+        │
+        ▼
+Random Forest Classifier
+        │
+        ▼
+Prediction + Probabilities
+        │
+        ▼
+FastAPI JSON Response
+        │
+        ▼
+Streamlit Dashboard
+
+## 🔄 Model Serving
+
+The API is designed with a modular predictor architecture so that the trained model can be replaced without changing the frontend request/response contract.
+
+Current production model:
+- XGBoost / Random Forest — update once the final model is selected.
+
+The preprocessing artifact and trained model artifact are loaded independently during API startup.
