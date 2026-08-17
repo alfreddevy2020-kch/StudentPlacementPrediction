@@ -25,7 +25,7 @@ import pandas as pd
 # Configuration
 # ---------------------------------------------------------------------------
 
-BACKEND_URL = "http://localhost:8000/predict"
+BACKEND_URL = "http://localhost:8000/api/v1/predict"
 
 # ---------------------------------------------------------------------------
 # Page Configuration
