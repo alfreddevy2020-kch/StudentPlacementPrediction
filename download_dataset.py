@@ -1,35 +1,28 @@
 import os
 import shutil
-from pathlib import Path
 import kagglehub
 
-def main():
-    # Target directory and file path
-    raw_dir = Path("data") / "raw"
-    target_path = raw_dir / "student_placement.csv"
+# 1. Download the latest version of the dataset
+downloaded_path = kagglehub.dataset_download(
+    "suvidyasonawane/student-academic-placement-performance-dataset"
+)
 
-    print("Downloading dataset using kagglehub...")
-    download_path = kagglehub.dataset_download(
-        "suvidyasonawane/student-academic-placement-performance-dataset"
-    )
-    print(f"Dataset downloaded to cache: {download_path}")
+# 2. Define the target 'data/raw' directory
+target_dir = os.path.join("data", "raw")
+os.makedirs(target_dir, exist_ok=True)
 
-    # Ensure data/raw folder exists
-    raw_dir.mkdir(parents=True, exist_ok=True)
+# 3. Find any CSV file and copy/rename it to student_placement.csv in data/raw
+csv_found = False
+for filename in os.listdir(downloaded_path):
+    if filename.endswith(".csv"):
+        src_file = os.path.join(downloaded_path, filename)
+        dst_file = os.path.join(target_dir, "student_placement.csv")
+        shutil.copy(src_file, dst_file)
+        print(f"Copied and renamed {filename} -> {dst_file}")
+        csv_found = True
+        break
 
-    downloaded_dir = Path(download_path)
-    csv_files = list(downloaded_dir.glob("*.csv"))
-
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in downloaded dataset directory: {download_path}")
-
-    # Prefer student_placement.csv if explicitly named, otherwise use the first CSV found
-    src_file = downloaded_dir / "student_placement.csv"
-    if not src_file.exists():
-        src_file = csv_files[0]
-
-    shutil.copy2(src_file, target_path)
-    print(f"[SUCCESS] Saved dataset to {target_path}")
-
-if __name__ == "__main__":
-    main()
+if not csv_found:
+    print("Warning: No CSV dataset file found in the downloaded directory.")
+else:
+    print("Dataset files are now stored in:", os.path.abspath(target_dir))

@@ -161,7 +161,7 @@ venv/bin/python -m pip install -r requirements.txt
 
 ## 5. Download and place the dataset
 
-Run `download_dataset.py`. It uses `kagglehub` to download the dataset, automatically creates `data/raw/`, and saves the dataset directly to `data/raw/student_placement.csv`:
+Simply run the download script, which will download the dataset via `kagglehub` and automatically copy and rename the file to `data/raw/student_placement.csv`.
 
 ```bash
 # Windows
@@ -169,13 +169,6 @@ venv\Scripts\python.exe download_dataset.py
 
 # Mac/Linux
 venv/bin/python download_dataset.py
-```
-
-This will output:
-```
-Downloading dataset using kagglehub...
-Dataset downloaded to cache: C:\Users\<you>\.cache\kagglehub\...
-[SUCCESS] Saved dataset to data\raw\student_placement.csv
 ```
 
 ### Verification
@@ -752,7 +745,7 @@ python -m venv venv
 venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# Download dataset
+# Download dataset (automatically places CSV in data/raw/)
 venv\Scripts\python.exe download_dataset.py
 
 # Preprocess
@@ -786,7 +779,7 @@ python3.12 -m venv venv
 venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -r requirements.txt
 
-# Download dataset
+# Download dataset (automatically places CSV in data/raw/)
 venv/bin/python download_dataset.py
 
 # Preprocess
