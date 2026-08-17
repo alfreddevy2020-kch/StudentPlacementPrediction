@@ -34,11 +34,10 @@ The following **are committed** and exist on a fresh clone (no action needed):
 |------|-------|
 | `part3/models/xgboost_best.json` | XGBoost native model format (not `.joblib`, so not gitignored) |
 | `part3/model_results/*` (all 10 files) | PNGs + CSVs — committed; re-running `xgboost_model.py` overwrites them |
-| `visualizations/*` (14 PNGs) | EDA plots — committed; re-running `visualization.py` overwrites them |
+| `visualizations/*` (14 PNGs) | EDA plots — committed to repository |
 
 > **Key fact:** without `data/raw/student_placement.csv`, **nothing runs**.
-> `preprocessing.py`, `data_analysis.py`, `visualization.py`, and
-> `part3/xgboost_model.py` all read from that exact path.
+> `preprocessing.py`, `data_analysis.py`, and `part3/xgboost_model.py` all read from that exact path.
 
 ---
 
@@ -468,21 +467,15 @@ Opens at http://localhost:8501 by default.
 
 ---
 
-## 11. Optional — Exploratory analysis & visualizations (Role 1)
+## 11. Optional — Exploratory data analysis (Role 1)
 
-These scripts are informational and do not affect the model pipeline:
+This script is informational and prints dataset statistics to console:
 
 ```bash
 # Data analysis (prints statistics to console)
 venv\Scripts\python.exe data_analysis.py          # Windows
 # venv/bin/python data_analysis.py                # Mac/Linux
-
-# Generate visualization plots → visualizations/
-venv\Scripts\python.exe visualization.py          # Windows
-# venv/bin/python visualization.py                # Mac/Linux
 ```
-
-Outputs go to `visualizations/` (14 PNG files, committed to the repo).
 
 ---
 
@@ -494,10 +487,9 @@ Outputs go to `visualizations/` (14 PNG files, committed to the repo).
 venv\Scripts\python.exe download_dataset.py       # download & save to data/raw/student_placement.csv
 venv\Scripts\python.exe preprocessing.py          # preprocess
 venv\Scripts\python.exe data_analysis.py          # EDA (console output)
-venv\Scripts\python.exe visualization.py          # generate plots
 ```
 
-**Key files you own:** `preprocessing.py`, `data_analysis.py`, `visualization.py`, `download_dataset.py`
+**Key files you own:** `preprocessing.py`, `data_analysis.py`, `download_dataset.py`
 
 ---
 
@@ -613,7 +605,6 @@ StudentPlacementPrediction/
 │
 ├── preprocessing.py                        ← [Role 1] data cleaning + feature engineering
 ├── data_analysis.py                        ← [Role 1] exploratory data analysis
-├── visualization.py                        ← [Role 1] generate EDA visualizations
 ├── download_dataset.py                     ← [Role 1] download dataset via kagglehub into data/raw/
 ├── requirements.txt                        ← base Python dependencies
 ├── pyrightconfig.json                      ← type-checker configuration
