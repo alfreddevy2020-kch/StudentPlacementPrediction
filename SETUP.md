@@ -134,40 +134,34 @@ source venv/bin/activate
 
 ## 4. Install all dependencies
 
-The base `requirements.txt` covers core dependencies. To get **every**
-role working in one pass, install extras alongside it.
+`requirements.txt` includes all required dependencies for data processing, machine learning models (LogReg, Random Forest, XGBoost), backend API (FastAPI, Uvicorn), and frontend dashboard (Streamlit, Plotly, pdfplumber).
 
-**Windows (one-shot):**
+**Windows:**
 ```bash
 venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\python.exe -m pip install -r requirements.txt
-venv\Scripts\python.exe -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 ```
 
-**Mac/Linux (one-shot):**
+**Mac/Linux:**
 ```bash
 venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -r requirements.txt
-venv/bin/python -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 ```
 
-### What each group covers
+### Dependency Coverage
 
 | Package group | Required by | Installed from |
 |---------------|-------------|----------------|
-| `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `scipy`, `joblib`, `kagglehub` | Role 1 (preprocessing), Role 2 (models) | `requirements.txt` |
-| `xgboost` | Role 3 — Part 3 XGBoost | Extra install |
-| `fastapi`, `uvicorn` | Role 6 — Backend API | Extra install |
-| `streamlit`, `requests`, `plotly`, `pdfplumber` | Role 3 — Frontend Dashboard | Extra install |
-
-> **Note:** `requirements.txt` alone is **not** sufficient for the full stack.
-> The extras above are required. Future improvement: consolidate into one file.
+| `numpy`, `pandas`, `scikit-learn`, `matplotlib`, `seaborn`, `scipy`, `joblib`, `kagglehub` | Preprocessing & Model Evaluation | `requirements.txt` |
+| `xgboost` | Part 3 XGBoost Model | `requirements.txt` |
+| `fastapi`, `uvicorn`, `pydantic` | Backend API | `requirements.txt` |
+| `streamlit`, `requests`, `plotly`, `pdfplumber` | Frontend Dashboard | `requirements.txt` |
 
 ---
 
 ## 5. Download and place the dataset
 
-### Step 1 — Download via kagglehub
+Run `download_dataset.py`. It uses `kagglehub` to download the dataset, automatically creates `data/raw/`, and saves the dataset directly to `data/raw/student_placement.csv`:
 
 ```bash
 # Windows
@@ -177,31 +171,12 @@ venv\Scripts\python.exe download_dataset.py
 venv/bin/python download_dataset.py
 ```
 
-This prints a cache path like:
+This will output:
 ```
-Path to dataset files: C:\Users\<you>\.cache\kagglehub\datasets\suvidyasonawane\student-academic-placement-performance-dataset\versions\1\
+Downloading dataset using kagglehub...
+Dataset downloaded to cache: C:\Users\<you>\.cache\kagglehub\...
+[SUCCESS] Saved dataset to data\raw\student_placement.csv
 ```
-
-### Step 2 — Copy the CSV to the expected location
-
-```bash
-# Create the target directory
-mkdir data\raw          # Windows (cmd/PowerShell: mkdir -Force data\raw)
-# mkdir -p data/raw     # Mac/Linux
-
-# Copy the file
-copy "<printed-path>\student_placement.csv" data\raw\           # Windows
-# cp "<printed-path>/student_placement.csv" data/raw/           # Mac/Linux
-```
-
-> **Finding the file if the printed path is wrong:**
-> ```bash
-> # Windows (PowerShell)
-> Get-ChildItem -Path $env:USERPROFILE\.cache -Recurse -Filter "student_placement.csv"
->
-> # Mac/Linux
-> find ~/.cache -name "student_placement.csv"
-> ```
 
 ### Verification
 
@@ -360,6 +335,22 @@ Part 3 is a separate model workstream. It is **not** required for the
 backend API (which uses Random Forest), but is part of the model comparison
 evaluation.
 
+### Option A — Run full pipeline (Windows, recommended)
+
+Double-click `part3\run_pipeline.bat` or run from the repo root:
+
+```bash
+part3\run_pipeline.bat
+```
+
+This runs the complete Part 3 pipeline in order:
+1. `download_dataset.py` — download & save dataset
+2. `preprocessing.py` — preprocess dataset
+3. `part3/xgboost_model.py` — train XGBoost model (CUDA / CPU fallback)
+4. `part3/predict_sample.py` — run smoke-test inference
+
+### Option B — Run individually
+
 ```bash
 # Windows
 venv\Scripts\python.exe part3\xgboost_model.py
@@ -507,8 +498,7 @@ Outputs go to `visualizations/` (14 PNG files, committed to the repo).
 ### Role 1 — Data & Feature Engineering (Alfred)
 
 ```bash
-venv\Scripts\python.exe download_dataset.py       # download
-# copy CSV to data/raw/
+venv\Scripts\python.exe download_dataset.py       # download & save to data/raw/student_placement.csv
 venv\Scripts\python.exe preprocessing.py          # preprocess
 venv\Scripts\python.exe data_analysis.py          # EDA (console output)
 venv\Scripts\python.exe visualization.py          # generate plots
@@ -542,8 +532,9 @@ venv\Scripts\python.exe part2\hp_sensitivity_analysis.py
 ### Role 3 — Model Lead 2 + Dashboard: XGBoost + Streamlit (Aditya)
 
 ```bash
-# XGBoost training
-venv\Scripts\python.exe part3\xgboost_model.py
+part3\run_pipeline.bat                            # full pipeline (Windows)
+# — OR individually: —
+venv\Scripts\python.exe part3\xgboost_model.py    # XGBoost training
 venv\Scripts\python.exe part3\predict_sample.py   # smoke test
 
 # Frontend (requires backend running on port 8000)
@@ -630,7 +621,7 @@ StudentPlacementPrediction/
 ├── preprocessing.py                        ← [Role 1] data cleaning + feature engineering
 ├── data_analysis.py                        ← [Role 1] exploratory data analysis
 ├── visualization.py                        ← [Role 1] generate EDA visualizations
-├── download_dataset.py                     ← [Role 1] download dataset via kagglehub
+├── download_dataset.py                     ← [Role 1] download dataset via kagglehub into data/raw/
 ├── requirements.txt                        ← base Python dependencies
 ├── pyrightconfig.json                      ← type-checker configuration
 ├── .gitignore                              ← excludes data/, venv/, models, etc.
@@ -707,7 +698,7 @@ You are not using the venv Python. Prefix commands with `venv\Scripts\python.exe
 ### `FileNotFoundError: data/raw/student_placement.csv`
 
 The dataset was not placed at the expected path. Re-read Section 5. Run
-`download_dataset.py`, note the printed path, and copy the CSV manually.
+`download_dataset.py` to automatically download and save the CSV to `data/raw/student_placement.csv`.
 
 ### `[API] [FAIL] Artifact not found: ...preprocessor.joblib`
 
@@ -760,13 +751,9 @@ cd StudentPlacementPrediction
 python -m venv venv
 venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\python.exe -m pip install -r requirements.txt
-venv\Scripts\python.exe -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 
 # Download dataset
 venv\Scripts\python.exe download_dataset.py
-# ⚠ NOTE: copy the CSV manually from the printed path to data\raw\
-mkdir data\raw -Force
-# copy "<printed-kagglehub-cache-path>\student_placement.csv" data\raw\
 
 # Preprocess
 venv\Scripts\python.exe preprocessing.py
@@ -778,7 +765,7 @@ venv\Scripts\python.exe part2\random_forest_model.py
 # part2\run_pipeline.bat
 
 # (Optional) Train Part 3 — XGBoost
-# venv\Scripts\python.exe part3\xgboost_model.py
+# part3\run_pipeline.bat
 
 # Start backend (terminal 1)
 venv\Scripts\python.exe -m uvicorn api.main:app --reload --port 8000
@@ -798,13 +785,9 @@ cd StudentPlacementPrediction
 python3.12 -m venv venv
 venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -r requirements.txt
-venv/bin/python -m pip install xgboost fastapi uvicorn streamlit requests plotly pdfplumber
 
 # Download dataset
 venv/bin/python download_dataset.py
-# ⚠ NOTE: copy the CSV manually from the printed path to data/raw/
-mkdir -p data/raw
-# cp "<printed-kagglehub-cache-path>/student_placement.csv" data/raw/
 
 # Preprocess
 venv/bin/python preprocessing.py

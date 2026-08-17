@@ -248,6 +248,14 @@ Actual  TN=827  FP=0
 
 ## Reproduction
 
+### Windows (One-Click Pipeline)
+
+```cmd
+part3\run_pipeline.bat
+```
+
+### Step-by-Step (Manual / Cross-Platform)
+
 ```bash
 # 1. Setup venv
 python3 -m venv venv
