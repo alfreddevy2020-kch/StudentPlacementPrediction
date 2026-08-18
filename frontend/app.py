@@ -1,5 +1,5 @@
 """
-PlacementPulse AI — Multi-Tab Executive Dashboard
+CampusReady — Multi-Tab Executive Dashboard
 ===================================================
 Premium Streamlit dashboard with 3 tabs:
   Tab 1: Departmental Pulse & Readiness Analytics
@@ -56,7 +56,7 @@ except ImportError:
 # 1. PAGE SETUP & THEME STYLING
 # =============================================================================
 st.set_page_config(
-    page_title="PlacementPulse AI | Student Placement Readiness & Policy Simulator",
+    page_title="CampusReady | Student Placement Readiness & Policy Simulator",
     page_icon=":material/school:",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -326,7 +326,7 @@ except Exception as load_err:
 # 4. SIDEBAR CONTROLS
 # =============================================================================
 with st.sidebar:
-    st.markdown("### :material/school: PlacementPulse AI")
+    st.markdown("### :material/school: CampusReady")
     st.caption("Student Placement Readiness & Policy Simulator")
     st.markdown("---")
 
@@ -1265,6 +1265,132 @@ with tab3:
 # =============================================================================
 # MULTI-MODEL BENCHMARK COMPARISON EXPANDER
 # =============================================================================
+
+@st.cache_data(show_spinner="Computing Multi-Model Benchmark Metrics & Validation...")
+def compute_benchmark_suite(dataset_len: int) -> dict:
+    """
+    Evaluates Logistic Regression, Random Forest, and XGBoost on a held-out
+    test split with 5-fold cross validation. Cached to avoid UI latency.
+    """
+    from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+    from sklearn.metrics import (
+        roc_auc_score, accuracy_score, precision_score,
+        recall_score, f1_score, confusion_matrix, roc_curve,
+    )
+    import time
+
+    bench_df = raw_df.copy()
+    target_col = "placement_status" if "placement_status" in bench_df.columns else "placed"
+    features_for_bench = [c for c in NUMERICAL_FEATURES + CATEGORICAL_FEATURES if c in bench_df.columns]
+
+    X_bench = bench_df[features_for_bench]
+    y_bench = bench_df[target_col]
+
+    X_train_b, X_test_b, y_train_b, y_test_b = train_test_split(
+        X_bench, y_bench, test_size=0.20, random_state=42, stratify=y_bench
+    )
+
+    X_train_proc = predictor._preprocessor.transform(X_train_b)
+    X_test_proc = predictor._preprocessor.transform(X_test_b)
+
+    comparison_matrix = []
+    detailed_metrics = {}
+
+    for m_name, m_model in predictor._models.items():
+        # Ensure scikit-learn compatibility
+        if hasattr(m_model, "__class__") and "LogisticRegression" in m_model.__class__.__name__:
+            if not hasattr(m_model, "multi_class"):
+                m_model.multi_class = "auto"
+
+        y_pred = m_model.predict(X_test_proc)
+        y_prob = m_model.predict_proba(X_test_proc)[:, 1]
+
+        test_auc = float(roc_auc_score(y_test_b, y_prob))
+        precision = float(precision_score(y_test_b, y_pred, zero_division=0))
+        recall_val = float(recall_score(y_test_b, y_pred, zero_division=0))
+        f1_val = float(f1_score(y_test_b, y_pred, zero_division=0))
+        accuracy = float(accuracy_score(y_test_b, y_pred))
+
+        # Latency benchmark
+        t0 = time.perf_counter()
+        for _ in range(50):
+            _ = m_model.predict_proba(X_test_proc)
+        latency_ms = round(
+            ((time.perf_counter() - t0) / (50 * max(1, len(X_test_proc)))) * 1000, 3
+        )
+
+        # 5-fold CV
+        try:
+            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            cv_scores = cross_val_score(
+                m_model, X_train_proc, y_train_b, cv=cv, scoring="roc_auc"
+            )
+            mean_cv = float(np.mean(cv_scores))
+        except Exception:
+            mean_cv = test_auc
+
+        # ROC curve
+        fpr, tpr, _ = roc_curve(y_test_b, y_prob)
+        step_r = max(1, len(fpr) // 30)
+        roc_data = {
+            "fpr": [round(float(v), 4) for v in fpr[::step_r].tolist()] + [1.0],
+            "tpr": [round(float(v), 4) for v in tpr[::step_r].tolist()] + [1.0],
+        }
+
+        cm = confusion_matrix(y_test_b, y_pred).tolist()
+
+        comparison_matrix.append({
+            "Model": m_name,
+            "Mean CV ROC-AUC": round(mean_cv, 4),
+            "Test ROC-AUC": round(test_auc, 4),
+            "Precision": round(precision, 4),
+            "Recall": round(recall_val, 4),
+            "F1-Score": round(f1_val, 4),
+            "Inference Latency (ms)": latency_ms,
+        })
+        detailed_metrics[m_name] = {
+            "test_roc_auc": round(test_auc, 4),
+            "roc_curve": roc_data,
+            "confusion_matrix": cm,
+        }
+
+    # Best model feature importance extraction
+    best_model_name = max(comparison_matrix, key=lambda x: x["Test ROC-AUC"])["Model"]
+    best_model_obj = predictor._models[best_model_name]
+    feat_names_out = []
+    for name, trans, cols in predictor._preprocessor.transformers_:
+        if name == "numerical":
+            feat_names_out.extend(cols)
+        elif name == "categorical":
+            if hasattr(trans, "get_feature_names_out"):
+                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
+            elif hasattr(trans, "categories_"):
+                for i, col in enumerate(cols):
+                    for cat in trans.categories_[i]:
+                        feat_names_out.append(f"{col}_{cat}")
+
+    top_features = []
+    if hasattr(best_model_obj, "feature_importances_"):
+        raw_imp = best_model_obj.feature_importances_
+        total = np.sum(raw_imp)
+        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
+        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
+        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
+    elif hasattr(best_model_obj, "coef_"):
+        raw_imp = np.abs(best_model_obj.coef_[0])
+        total = np.sum(raw_imp)
+        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
+        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
+        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "comparison_matrix": comparison_matrix,
+        "detailed_metrics": detailed_metrics,
+        "best_model_name": best_model_name,
+        "top_features": top_features,
+    }
+
+
 with st.expander(
     ":material/query_stats: Multi-Model Benchmark Comparison Matrix & Performance Validation",
     expanded=False,
@@ -1275,91 +1401,18 @@ with st.expander(
         "across accuracy, ROC-AUC, precision, recall, F1, and latency."
     )
 
-    # Generate benchmark metrics on-the-fly from loaded models and dataset
     try:
-        from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
-        from sklearn.metrics import (
-            roc_auc_score, accuracy_score, precision_score,
-            recall_score, f1_score, confusion_matrix, roc_curve,
-        )
-        import time
+        bench_data = compute_benchmark_suite(len(raw_df))
+        comparison_matrix = bench_data["comparison_matrix"]
+        detailed_metrics = bench_data["detailed_metrics"]
+        best_model_name = bench_data["best_model_name"]
+        top_features = bench_data.get("top_features", [])
 
-        # Prepare data
-        bench_df = raw_df.copy()
-        bench_df["placement_target"] = bench_df["placement_status"]
-        features_for_bench = [c for c in NUMERICAL_FEATURES + CATEGORICAL_FEATURES if c in bench_df.columns]
-
-        X_bench = bench_df[features_for_bench]
-        y_bench = bench_df["placement_target"]
-
-        X_train_b, X_test_b, y_train_b, y_test_b = train_test_split(
-            X_bench, y_bench, test_size=0.20, random_state=42, stratify=y_bench
-        )
-
-        # Transform using loaded preprocessor
-        X_train_proc = predictor._preprocessor.transform(X_train_b)
-        X_test_proc = predictor._preprocessor.transform(X_test_b)
-
-        comparison_matrix = []
-        detailed_metrics = {}
         model_colors = {
             "Logistic Regression": "#94A3B8",
             "Random Forest": "#34D399",
             "XGBoost": "#60A5FA",
         }
-
-        for m_name, m_model in predictor._models.items():
-            y_pred = m_model.predict(X_test_proc)
-            y_prob = m_model.predict_proba(X_test_proc)[:, 1]
-
-            test_auc = float(roc_auc_score(y_test_b, y_prob))
-            precision = float(precision_score(y_test_b, y_pred, zero_division=0))
-            recall_val = float(recall_score(y_test_b, y_pred, zero_division=0))
-            f1_val = float(f1_score(y_test_b, y_pred, zero_division=0))
-            accuracy = float(accuracy_score(y_test_b, y_pred))
-
-            # Inference latency
-            t0 = time.perf_counter()
-            for _ in range(50):
-                _ = m_model.predict_proba(X_test_proc)
-            latency_ms = round(
-                ((time.perf_counter() - t0) / (50 * max(1, len(X_test_proc)))) * 1000, 3
-            )
-
-            # CV score
-            try:
-                cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-                cv_scores = cross_val_score(
-                    m_model, X_train_proc, y_train_b, cv=cv, scoring="roc_auc"
-                )
-                mean_cv = float(np.mean(cv_scores))
-            except Exception:
-                mean_cv = test_auc
-
-            # ROC curve
-            fpr, tpr, _ = roc_curve(y_test_b, y_prob)
-            step_r = max(1, len(fpr) // 30)
-            roc_data = {
-                "fpr": [round(float(v), 4) for v in fpr[::step_r].tolist()] + [1.0],
-                "tpr": [round(float(v), 4) for v in tpr[::step_r].tolist()] + [1.0],
-            }
-
-            cm = confusion_matrix(y_test_b, y_pred).tolist()
-
-            comparison_matrix.append({
-                "Model": m_name,
-                "Mean CV ROC-AUC": round(mean_cv, 4),
-                "Test ROC-AUC": round(test_auc, 4),
-                "Precision": round(precision, 4),
-                "Recall": round(recall_val, 4),
-                "F1-Score": round(f1_val, 4),
-                "Inference Latency (ms)": latency_ms,
-            })
-            detailed_metrics[m_name] = {
-                "test_roc_auc": round(test_auc, 4),
-                "roc_curve": roc_data,
-                "confusion_matrix": cm,
-            }
 
         # Display comparison matrix
         matrix_configs = {
@@ -1420,9 +1473,6 @@ with st.expander(
 
         with col_cm:
             with st.container(border=True):
-                best_model_name = max(
-                    comparison_matrix, key=lambda x: x["Test ROC-AUC"]
-                )["Model"]
                 st.markdown(
                     f"#### :material/grid_on: Confusion Matrix ({best_model_name})"
                 )
@@ -1439,41 +1489,10 @@ with st.expander(
                 st.plotly_chart(fig_cm, use_container_width=True)
 
         # Feature Importance
-        best_model_obj = predictor._models[best_model_name]
-        if hasattr(best_model_obj, "feature_importances_"):
+        if top_features:
             with st.container(border=True):
-                st.markdown("#### :material/leaderboard: Global Feature Importance Attribution")
-
-                # Get feature names after preprocessing
-                feat_names_out = []
-                for name, trans, cols in predictor._preprocessor.transformers_:
-                    if name == "numerical":
-                        feat_names_out.extend(cols)
-                    elif name == "categorical":
-                        if hasattr(trans, "get_feature_names_out"):
-                            feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
-                        elif hasattr(trans, "categories_"):
-                            for i, col in enumerate(cols):
-                                for cat in trans.categories_[i]:
-                                    feat_names_out.append(f"{col}_{cat}")
-
-                raw_imp = best_model_obj.feature_importances_
-                total = np.sum(raw_imp)
-                normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-
-                if len(feat_names_out) == len(normalized_imp):
-                    f_names = feat_names_out
-                else:
-                    f_names = [f"Feature_{i}" for i in range(len(normalized_imp))]
-
-                f_df = (
-                    pd.DataFrame({
-                        "Feature": f_names,
-                        "Importance (%)": np.round(normalized_imp, 2),
-                    })
-                    .sort_values(by="Importance (%)", ascending=True)
-                    .tail(10)
-                )
+                st.markdown(f"#### :material/leaderboard: Global Feature Importance Attribution ({best_model_name})")
+                f_df = pd.DataFrame(top_features, columns=["Feature", "Importance (%)"]).sort_values(by="Importance (%)", ascending=True)
 
                 fig_feat = px.bar(
                     f_df,

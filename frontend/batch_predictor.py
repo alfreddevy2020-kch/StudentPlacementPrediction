@@ -79,7 +79,12 @@ class BatchPredictor:
 
         for name, path in MODEL_PATHS.items():
             if path.exists():
-                self._models[name] = joblib.load(path)
+                m = joblib.load(path)
+                # Auto-heal scikit-learn compatibility attributes across versions
+                if hasattr(m, "__class__") and "LogisticRegression" in m.__class__.__name__:
+                    if not hasattr(m, "multi_class"):
+                        m.multi_class = "auto"
+                self._models[name] = m
 
         if not self._models:
             raise FileNotFoundError(
