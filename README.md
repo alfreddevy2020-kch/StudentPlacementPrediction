@@ -2,7 +2,7 @@
 
 A production-grade Machine Learning system that predicts whether a student is likely to be placed, based on academic performance, technical skills, soft skills, internships, projects, work experience, certifications, attendance, and backlogs.
 
-[![CI](https://github.com/<your-org>/StudentPlacementPrediction/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-org>/StudentPlacementPrediction/actions/workflows/ci.yml)
+[![CI](https://github.com/alfreddevy2020-kch/StudentPlacementPrediction/actions/workflows/ci.yml/badge.svg)](https://github.com/alfreddevy2020-kch/StudentPlacementPrediction/actions/workflows/ci.yml)
 
 ---
 
@@ -122,6 +122,7 @@ StudentPlacementPrediction/
 ├── .streamlit/
 │   └── secrets.toml                ← BACKEND_URL (gitignored)
 │
+├── pyproject.toml                  ← Project metadata, Ruff linter & Pytest config
 ├── render.yaml                     ← Render free-tier deployment blueprint
 ├── requirements.txt                ← full dependencies
 ├── requirements-ci.txt             ← minimal CI dependencies (CPU-only)
@@ -290,19 +291,23 @@ Every push and pull request to `main` triggers the CI pipeline defined in [`.git
 
 The smoke test loads all three production `.joblib` bundles and runs a sample prediction through each. **A broken model artifact cannot be merged.**
 
-### Running Tests Locally
+### Running Linting & Tests Locally
 
 ```bash
-# Install test dependencies (first time)
-pip install pytest httpx pytest-asyncio ruff
+# 1. Install test and dev dependencies
+pip install pytest httpx pytest-asyncio ruff pyright
 
-# Run unit tests (no artifacts needed)
+# 2. Run linter & formatter
+ruff check .
+ruff format . --check
+
+# 3. Run unit tests (no artifacts needed)
 pytest tests/test_schemas.py tests/test_drift.py tests/test_logger.py -v
 
-# Run full integration tests (requires artifacts/production/)
+# 4. Run full integration tests (requires artifacts/production/)
 pytest tests/ -v
 
-# Model smoke test
+# 5. Run model smoke test
 python scripts/smoke_test_models.py
 ```
 
@@ -382,7 +387,7 @@ See **[SETUP.md](SETUP.md)** for detailed step-by-step setup instructions.
 
 ```bash
 # Clone & set up environment
-git clone <repo-url>
+git clone https://github.com/alfreddevy2020-kch/StudentPlacementPrediction.git
 cd StudentPlacementPrediction
 python -m venv venv
 venv\Scripts\activate
@@ -411,7 +416,7 @@ venv\Scripts\streamlit run frontend\app.py
 | Prediction Logging | SQLite (WAL mode) |
 | Drift Detection | PSI (Population Stability Index) |
 | CI/CD | GitHub Actions |
-| Linting | ruff |
+| Linting & Formatting | Ruff |
 | Type checking | pyright |
 | Testing | pytest + httpx |
 | Deployment (API) | Render free tier |
@@ -426,8 +431,8 @@ The following are **never committed** to git:
 - Raw student data (`data/raw/`)
 - Processed datasets (`data/processed/`)
 - Student IDs or PII
-- API tokens or secrets (`.env`, `secrets.toml`)
-- Prediction logs (`logs/predictions.db`)
+- API tokens or secrets (`.env`, `.streamlit/secrets.toml`)
+- Prediction logs (`logs/predictions.db`, `*.sqlite`, `*.db`)
 - Experimental / unapproved model artifacts
 
 Only explicitly reviewed production artifacts in `artifacts/production/` are committed.
