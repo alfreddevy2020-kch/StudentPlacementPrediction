@@ -31,7 +31,6 @@ Public API
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,9 +59,9 @@ _MIN_PREDICTIONS = 20
 # ── Data class for the drift report ───────────────────────────────────────
 @dataclass
 class DriftReport:
-    status: str          # "ok" | "warn" | "alert" | "insufficient_data"
+    status: str  # "ok" | "warn" | "alert" | "insufficient_data"
     psi: float
-    mean_shift: float    # |current_mean − baseline_mean|
+    mean_shift: float  # |current_mean − baseline_mean|
     baseline_mean: float
     current_mean: float
     n_predictions: int
@@ -120,10 +119,7 @@ def _status_from_metrics(psi: float, shift: float) -> tuple[str, str]:
             f"(PSI={psi:.3f}, shift={shift:.3f}). "
             "Monitor closely."
         )
-    return "ok", (
-        f"No significant drift detected "
-        f"(PSI={psi:.3f}, shift={shift:.3f})."
-    )
+    return "ok", (f"No significant drift detected (PSI={psi:.3f}, shift={shift:.3f}).")
 
 
 # ── Main class ────────────────────────────────────────────────────────────

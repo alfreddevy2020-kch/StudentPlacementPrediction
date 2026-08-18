@@ -77,9 +77,7 @@ for model_key, bundle in MODEL_BUNDLES.items():
             manifest_path=bundle.get("manifest"),
         )
         # Swap model field to match the current model key
-        sample = SAMPLE_INPUT.model_copy(
-            update={"model": ModelName(model_key)}
-        )
+        sample = SAMPLE_INPUT.model_copy(update={"model": ModelName(model_key)})
         result = predictor.predict(sample)
         assert result.placement_status in (0, 1), "placement_status must be 0 or 1"
         assert 0.0 <= result.probability_placed <= 1.0, "probability out of range"

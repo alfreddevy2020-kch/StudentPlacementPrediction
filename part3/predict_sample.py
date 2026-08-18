@@ -6,9 +6,7 @@ on the user-specified sample input.
 """
 
 import joblib
-import numpy as np
 import pandas as pd
-import xgboost as xgb
 
 # ============================================================
 # 1. LOAD MODEL AND PREPROCESSOR
@@ -23,23 +21,27 @@ print("  Loaded successfully.")
 # 2. DEFINE SAMPLE INPUT
 # ============================================================
 
-sample_input = pd.DataFrame([{
-    "ssc_percentage":              82.5,
-    "hsc_percentage":              79.2,
-    "degree_percentage":           76.8,
-    "cgpa":                        8.1,
-    "attendance_percentage":       88,
-    "backlogs":                    0,
-    "entrance_exam_score":         84,
-    "technical_skill_score":       78,
-    "soft_skill_score":            81,
-    "certifications":              4,
-    "live_projects":               3,
-    "internship_count":            2,
-    "work_experience_months":      0,
-    "gender":                      "Male",
-    "extracurricular_activities":  "Yes",
-}])
+sample_input = pd.DataFrame(
+    [
+        {
+            "ssc_percentage": 82.5,
+            "hsc_percentage": 79.2,
+            "degree_percentage": 76.8,
+            "cgpa": 8.1,
+            "attendance_percentage": 88,
+            "backlogs": 0,
+            "entrance_exam_score": 84,
+            "technical_skill_score": 78,
+            "soft_skill_score": 81,
+            "certifications": 4,
+            "live_projects": 3,
+            "internship_count": 2,
+            "work_experience_months": 0,
+            "gender": "Male",
+            "extracurricular_activities": "Yes",
+        }
+    ]
+)
 
 print("\nSample Input:")
 print(sample_input.to_string(index=False))
@@ -70,11 +72,11 @@ else:
 # ============================================================
 
 output = {
-    "placement_status":       pred_status,
-    "placement_label":        pred_label,
-    "probability_placed":     prob_placed,
+    "placement_status": pred_status,
+    "placement_label": pred_label,
+    "probability_placed": prob_placed,
     "probability_not_placed": prob_not_placed,
-    "risk_level":             risk,
+    "risk_level": risk,
 }
 
 print("\n========== PREDICTION OUTPUT ==========")

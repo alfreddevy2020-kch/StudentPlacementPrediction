@@ -15,8 +15,8 @@ Monitoring:
     http://localhost:8000/logs/summary
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -52,6 +52,7 @@ _drift_checker: DriftChecker | None = None
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
@@ -65,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # ── Prediction logger ────────────────────────────────────────────
     _logger = PredictionLogger()
-    print(f"[API] Prediction logger initialised → {_logger._db_path}")
+    print(f"[API] Prediction logger initialised -> {_logger._db_path}")
 
     print("[API] Initialising production model bundles ...")
 
@@ -100,7 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     _drift_checker = DriftChecker(_logger, MODEL_BUNDLES)
     print("[API] Drift checker initialised.")
 
-    yield   # server is now running
+    yield  # server is now running
 
     # (shutdown cleanup — none required)
 
@@ -120,6 +121,7 @@ app = FastAPI(
 
 # ── Global exception handler ─────────────────────────────────────────────────
 
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all for any unhandled exceptions so the server never returns a raw traceback."""
@@ -130,6 +132,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 @app.get(
     "/health",
@@ -143,8 +146,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 )
 def health_check() -> HealthResponse:
     models_loaded = {
-        key: (key in _predictors and _predictors[key].is_ready)
-        for key in MODEL_BUNDLES.keys()
+        key: (key in _predictors and _predictors[key].is_ready) for key in MODEL_BUNDLES
     }
     loaded_count = sum(models_loaded.values())
 
@@ -217,7 +219,7 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inference failed: {type(exc).__name__}: {exc}",
-        )
+        ) from exc
 
     # Persist prediction to SQLite log (best-effort, never raises)
     if _logger is not None:
@@ -227,6 +229,7 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
 
 
 # ── Drift endpoint ────────────────────────────────────────────────────────────
+
 
 @app.get(
     "/api/v1/drift",
@@ -282,7 +285,5 @@ def log_summary() -> dict:
         )
     return {
         "total": _logger.total_count(),
-        "by_model": {
-            key: _logger.total_count(model=key) for key in MODEL_BUNDLES
-        },
+        "by_model": {key: _logger.total_count(model=key) for key in MODEL_BUNDLES},
     }

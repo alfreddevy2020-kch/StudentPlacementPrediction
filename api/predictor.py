@@ -30,7 +30,7 @@ import abc
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import joblib
 import pandas as pd
@@ -83,6 +83,7 @@ _SAMPLE_VALID_RECORD = {
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
+
 def _compute_sha256(filepath: Path) -> str:
     """Compute the SHA-256 checksum of a file on disk."""
     hasher = hashlib.sha256()
@@ -115,7 +116,7 @@ def verify_and_load_bundle(
     model_key: str,
     preprocessor_path: Path,
     model_path: Path,
-    manifest_path: Optional[Path] = None,
+    manifest_path: Path | None = None,
 ) -> tuple[Any, Any, dict]:
     """
     Strict validation of a production model bundle:
@@ -135,7 +136,7 @@ def verify_and_load_bundle(
         if not manifest_path.exists():
             raise FileNotFoundError(f"Manifest file missing: {manifest_path}")
 
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
 
         manifest_model_name = manifest.get("model_name")
@@ -193,6 +194,7 @@ def verify_and_load_bundle(
 
 # ── Abstract Base ────────────────────────────────────────────────────────────
 
+
 class BasePredictor(abc.ABC):
     """
     Abstract predictor interface.
@@ -220,8 +222,8 @@ class BasePredictor(abc.ABC):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-        manifest_path: Optional[Path] = None,
-    ) -> "BasePredictor":
+        manifest_path: Path | None = None,
+    ) -> BasePredictor:
         """Load preprocessor and model artifacts from disk with manifest validation."""
         ...
 
@@ -242,12 +244,13 @@ class BasePredictor(abc.ABC):
 
 # ── Concrete: Logistic Regression ───────────────────────────────────────────
 
+
 class LogisticRegressionPredictor(BasePredictor):
     """Inference back-end for Logistic Regression."""
 
     _MODEL_DISPLAY_NAME = "Logistic Regression"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: Optional[dict] = None) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
@@ -262,8 +265,8 @@ class LogisticRegressionPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-        manifest_path: Optional[Path] = None,
-    ) -> "LogisticRegressionPredictor":
+        manifest_path: Path | None = None,
+    ) -> LogisticRegressionPredictor:
         preprocessor, model, manifest = verify_and_load_bundle(
             "logistic_regression",
             preprocessor_path,
@@ -282,7 +285,7 @@ class LogisticRegressionPredictor(BasePredictor):
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,
@@ -296,12 +299,13 @@ class LogisticRegressionPredictor(BasePredictor):
 
 # ── Concrete: Random Forest ──────────────────────────────────────────────────
 
+
 class RandomForestPredictor(BasePredictor):
     """Inference back-end for Random Forest."""
 
     _MODEL_DISPLAY_NAME = "Random Forest"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: Optional[dict] = None) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
@@ -316,8 +320,8 @@ class RandomForestPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-        manifest_path: Optional[Path] = None,
-    ) -> "RandomForestPredictor":
+        manifest_path: Path | None = None,
+    ) -> RandomForestPredictor:
         preprocessor, model, manifest = verify_and_load_bundle(
             "random_forest",
             preprocessor_path,
@@ -336,7 +340,7 @@ class RandomForestPredictor(BasePredictor):
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,
@@ -350,12 +354,13 @@ class RandomForestPredictor(BasePredictor):
 
 # ── Concrete: XGBoost ───────────────────────────────────────────────────────
 
+
 class XGBoostPredictor(BasePredictor):
     """Inference back-end for XGBoost."""
 
     _MODEL_DISPLAY_NAME = "XGBoost"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: Optional[dict] = None) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
@@ -370,8 +375,8 @@ class XGBoostPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-        manifest_path: Optional[Path] = None,
-    ) -> "XGBoostPredictor":
+        manifest_path: Path | None = None,
+    ) -> XGBoostPredictor:
         preprocessor, model, manifest = verify_and_load_bundle(
             "xgboost",
             preprocessor_path,
@@ -390,7 +395,7 @@ class XGBoostPredictor(BasePredictor):
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,

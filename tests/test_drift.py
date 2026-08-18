@@ -9,19 +9,19 @@ model artifacts.
 import pytest
 
 from api.drift import (
+    _ALERT_PSI,
+    _ALERT_SHIFT,
+    _WARN_PSI,
+    _WARN_SHIFT,
     DriftReport,
     _compute_psi,
     _status_from_metrics,
-    _WARN_PSI,
-    _ALERT_PSI,
-    _WARN_SHIFT,
-    _ALERT_SHIFT,
 )
-
 
 # ---------------------------------------------------------------------------
 # PSI calculation
 # ---------------------------------------------------------------------------
+
 
 class TestComputePSI:
     def test_identical_distributions_zero_psi(self):
@@ -30,21 +30,23 @@ class TestComputePSI:
         assert psi == pytest.approx(0.0, abs=1e-5)
 
     def test_shifted_distribution_positive_psi(self):
-        baseline = [0.8] * 100          # most predictions high probability
-        current = [0.2] * 100           # all predictions low probability
+        baseline = [0.8] * 100  # most predictions high probability
+        current = [0.2] * 100  # all predictions low probability
         psi = _compute_psi(baseline, current)
-        assert psi > _ALERT_PSI         # should be "alert" level
+        assert psi > _ALERT_PSI  # should be "alert" level
 
     def test_slight_shift_small_psi(self):
         import numpy as np
+
         rng = np.random.default_rng(42)
         baseline = list(rng.normal(0.7, 0.1, 500).clip(0, 1))
         current = list(rng.normal(0.72, 0.1, 200).clip(0, 1))  # tiny shift
         psi = _compute_psi(baseline, current)
-        assert psi < _WARN_PSI          # should be "ok"
+        assert psi < _WARN_PSI  # should be "ok"
 
     def test_psi_is_non_negative(self):
         import numpy as np
+
         rng = np.random.default_rng(0)
         b = list(rng.uniform(0, 1, 100))
         c = list(rng.uniform(0, 1, 100))
@@ -55,6 +57,7 @@ class TestComputePSI:
 # ---------------------------------------------------------------------------
 # Status thresholds
 # ---------------------------------------------------------------------------
+
 
 class TestStatusFromMetrics:
     def test_ok_status(self):
@@ -89,6 +92,7 @@ class TestStatusFromMetrics:
 # DriftReport dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestDriftReport:
     def test_to_dict_keys(self):
         r = DriftReport(
@@ -102,9 +106,13 @@ class TestDriftReport:
         )
         d = r.to_dict()
         assert set(d.keys()) == {
-            "status", "psi", "mean_shift",
-            "baseline_mean", "current_mean",
-            "n_predictions", "message",
+            "status",
+            "psi",
+            "mean_shift",
+            "baseline_mean",
+            "current_mean",
+            "n_predictions",
+            "message",
         }
 
     def test_to_dict_rounding(self):

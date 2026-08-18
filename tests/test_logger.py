@@ -5,14 +5,12 @@ Unit tests for PredictionLogger (SQLite).
 Uses a temporary in-memory / temp-file database — never touches logs/predictions.db.
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from api.logger import PredictionLogger
 from api.schemas import ModelName, PredictionResponse, StudentInput
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -56,6 +54,7 @@ def tmp_logger(tmp_path: Path) -> PredictionLogger:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestPredictionLogger:
     def test_schema_created_on_init(self, tmp_logger: PredictionLogger):

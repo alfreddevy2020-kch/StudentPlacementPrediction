@@ -38,6 +38,7 @@ VALID_PAYLOAD = {
 # StudentInput — valid cases
 # ---------------------------------------------------------------------------
 
+
 class TestStudentInputValid:
     def test_full_valid_payload(self):
         s = StudentInput(**VALID_PAYLOAD)
@@ -50,13 +51,15 @@ class TestStudentInputValid:
             assert s.model.value == m
 
     def test_boundary_values(self):
-        s = StudentInput(**{
-            **VALID_PAYLOAD,
-            "ssc_percentage": 0.0,
-            "hsc_percentage": 100.0,
-            "cgpa": 0.0,
-            "backlogs": 0,
-        })
+        s = StudentInput(
+            **{
+                **VALID_PAYLOAD,
+                "ssc_percentage": 0.0,
+                "hsc_percentage": 100.0,
+                "cgpa": 0.0,
+                "backlogs": 0,
+            }
+        )
         assert s.ssc_percentage == 0.0
 
     def test_female_gender(self):
@@ -71,6 +74,7 @@ class TestStudentInputValid:
 # ---------------------------------------------------------------------------
 # StudentInput — invalid cases
 # ---------------------------------------------------------------------------
+
 
 class TestStudentInputInvalid:
     def test_missing_required_field(self):
@@ -107,6 +111,7 @@ class TestStudentInputInvalid:
 # PredictionResponse — valid construction
 # ---------------------------------------------------------------------------
 
+
 class TestPredictionResponse:
     def test_valid_placed(self):
         r = PredictionResponse(
@@ -126,7 +131,7 @@ class TestPredictionResponse:
                 model_used="XGBoost",
                 placement_status=1,
                 placement_label="Placed",
-                probability_placed=1.1,      # > 1.0
+                probability_placed=1.1,  # > 1.0
                 probability_not_placed=0.0,
                 risk_level="High Probability of Placement (Low Risk)",
             )

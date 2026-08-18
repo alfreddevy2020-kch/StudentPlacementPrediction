@@ -10,51 +10,27 @@ from pathlib import Path
 # ── Artifact Paths ─────────────────────────────────────────────────────────
 # Resolved relative to this file so the server works regardless of the
 # working directory from which uvicorn is launched.
-BASE_DIR = Path(__file__).resolve().parent.parent   # repo root
+BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 ARTIFACT_ROOT = BASE_DIR / "artifacts" / "production"
 
 MODEL_BUNDLES: dict[str, dict[str, Path]] = {
     "logistic_regression": {
-        "preprocessor": (
-            ARTIFACT_ROOT / "logistic_regression" / "preprocessor.joblib"
-        ),
-        "model": (
-            ARTIFACT_ROOT / "logistic_regression" / "model.joblib"
-        ),
-        "manifest": (
-            ARTIFACT_ROOT / "logistic_regression" / "manifest.json"
-        ),
-        "baseline_metrics": (
-            ARTIFACT_ROOT / "logistic_regression" / "baseline_metrics.json"
-        ),
+        "preprocessor": (ARTIFACT_ROOT / "logistic_regression" / "preprocessor.joblib"),
+        "model": (ARTIFACT_ROOT / "logistic_regression" / "model.joblib"),
+        "manifest": (ARTIFACT_ROOT / "logistic_regression" / "manifest.json"),
+        "baseline_metrics": (ARTIFACT_ROOT / "logistic_regression" / "baseline_metrics.json"),
     },
     "random_forest": {
-        "preprocessor": (
-            ARTIFACT_ROOT / "random_forest" / "preprocessor.joblib"
-        ),
-        "model": (
-            ARTIFACT_ROOT / "random_forest" / "model.joblib"
-        ),
-        "manifest": (
-            ARTIFACT_ROOT / "random_forest" / "manifest.json"
-        ),
-        "baseline_metrics": (
-            ARTIFACT_ROOT / "random_forest" / "baseline_metrics.json"
-        ),
+        "preprocessor": (ARTIFACT_ROOT / "random_forest" / "preprocessor.joblib"),
+        "model": (ARTIFACT_ROOT / "random_forest" / "model.joblib"),
+        "manifest": (ARTIFACT_ROOT / "random_forest" / "manifest.json"),
+        "baseline_metrics": (ARTIFACT_ROOT / "random_forest" / "baseline_metrics.json"),
     },
     "xgboost": {
-        "preprocessor": (
-            ARTIFACT_ROOT / "xgboost" / "preprocessor.joblib"
-        ),
-        "model": (
-            ARTIFACT_ROOT / "xgboost" / "model.joblib"
-        ),
-        "manifest": (
-            ARTIFACT_ROOT / "xgboost" / "manifest.json"
-        ),
-        "baseline_metrics": (
-            ARTIFACT_ROOT / "xgboost" / "baseline_metrics.json"
-        ),
+        "preprocessor": (ARTIFACT_ROOT / "xgboost" / "preprocessor.joblib"),
+        "model": (ARTIFACT_ROOT / "xgboost" / "model.joblib"),
+        "manifest": (ARTIFACT_ROOT / "xgboost" / "manifest.json"),
+        "baseline_metrics": (ARTIFACT_ROOT / "xgboost" / "baseline_metrics.json"),
     },
 }
 

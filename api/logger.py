@@ -103,7 +103,7 @@ class PredictionLogger:
         resolved = Path(os.getenv("PREDICTION_LOG_DB", str(db_path or _DEFAULT_DB)))
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = resolved
-        self._local = threading.local()   # per-thread connection
+        self._local = threading.local()  # per-thread connection
         self._init_schema()
 
     # ------------------------------------------------------------------
@@ -116,7 +116,7 @@ class PredictionLogger:
             self._local.conn = sqlite3.connect(
                 self._db_path,
                 check_same_thread=False,  # we manage threading ourselves
-                isolation_level=None,     # autocommit
+                isolation_level=None,  # autocommit
             )
             self._local.conn.execute("PRAGMA journal_mode=WAL;")
         return self._local.conn

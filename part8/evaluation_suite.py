@@ -28,16 +28,21 @@ import os
 import warnings
 
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve,
+    accuracy_score,
     classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    roc_curve,
 )
 
 warnings.filterwarnings("ignore")
@@ -45,22 +50,22 @@ warnings.filterwarnings("ignore")
 # ---------------------------------------------------------------------------
 # CONFIG — matches the actual repo layout
 # ---------------------------------------------------------------------------
-TARGET_COL = "placement_status"          # 1 = Placed, 0 = Not Placed
+TARGET_COL = "placement_status"  # 1 = Placed, 0 = Not Placed
 TEST_PATH = "data/processed/test_processed.csv"
-TRAIN_PATH = "data/processed/train_processed.csv"   # used only for the leakage sanity check
+TRAIN_PATH = "data/processed/train_processed.csv"  # used only for the leakage sanity check
 
 MODEL_PATHS = {
     "Logistic Regression": "part2/models/logistic_regression_best.joblib",
-    "Random Forest":       "part2/models/random_forest_best.joblib",
-    "XGBoost":             "part3/models/xgboost_best.joblib",
+    "Random Forest": "part2/models/random_forest_best.joblib",
+    "XGBoost": "part3/models/xgboost_best.joblib",
 }
 
 os.makedirs("part8/results", exist_ok=True)
 
 # Business cost weights — state these as an explicit assumption in the deck.
 # AT_RISK (class 0) is the class we care about catching early.
-COST_MISSED_AT_RISK = 5     # false negative on at-risk detection: expensive
-COST_FALSE_ALARM = 1        # flagging a fine student for extra attention: cheap
+COST_MISSED_AT_RISK = 5  # false negative on at-risk detection: expensive
+COST_FALSE_ALARM = 1  # flagging a fine student for extra attention: cheap
 
 
 def load_model(path):
@@ -158,8 +163,10 @@ def cost_sensitive_threshold(model, X_test, y_test, name):
         if cost < best_cost:
             best_cost, best_t = cost, t
 
-    print(f"\n[{name}] Cost-sensitive optimal threshold: {best_t:.3f}  "
-          f"(compare against the F1-optimal threshold already in {name}'s metadata.csv)")
+    print(
+        f"\n[{name}] Cost-sensitive optimal threshold: {best_t:.3f}  "
+        f"(compare against the F1-optimal threshold already in {name}'s metadata.csv)"
+    )
 
     plt.figure(figsize=(6, 4))
     plt.plot(thresholds, costs)
@@ -198,12 +205,16 @@ def leakage_sanity_check(model, name="XGBoost"):
 
     print(f"\n[{name}] Train ROC-AUC: {train_auc:.4f} | Test ROC-AUC: {test_auc:.4f}")
     if abs(train_auc - test_auc) < 0.01:
-        print(f"  -> Gap is tiny. Likely a genuinely near-separable synthetic dataset, "
-              f"not overfitting. State this plainly in the deck rather than let the "
-              f"panel assume it's a bug.")
+        print(
+            "  -> Gap is tiny. Likely a genuinely near-separable synthetic dataset, "
+            "not overfitting. State this plainly in the deck rather than let the "
+            "panel assume it's a bug."
+        )
     else:
-        print(f"  -> Meaningful gap between train and test. Worth investigating further "
-              f"before presenting the test number as final.")
+        print(
+            "  -> Meaningful gap between train and test. Worth investigating further "
+            "before presenting the test number as final."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +248,9 @@ def edge_case_tests(model, X_test_df, name):
         X_outlier[backlog_col] = X_test_df[backlog_col].max() * 3
         try:
             pred = model.predict_proba(X_outlier.values)[:, 1][0]
-            print(f"[PASS] Outlier backlog value handled, P(placed)={pred:.3f} — sanity-check manually")
+            print(
+                f"[PASS] Outlier backlog value handled, P(placed)={pred:.3f} — sanity-check manually"
+            )
         except Exception as e:
             print(f"[FAIL] {e}")
 
@@ -257,16 +270,18 @@ def business_impact(model, X_test, y_test, threshold, name, current_manual_catch
     y_pred = (y_proba >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
 
-    at_risk_total = tn + fp   # actual class-0 count
-    caught = tn                # correctly predicted at-risk (class 0)
+    at_risk_total = tn + fp  # actual class-0 count
+    caught = tn  # correctly predicted at-risk (class 0)
     manual_estimate = int(at_risk_total * current_manual_catch_rate)
     additional = max(caught - manual_estimate, 0)
 
     print(f"\n=== Business impact — {name} @ threshold {threshold:.3f} ===")
     print(f"At-risk students in test set: {at_risk_total}")
-    print(f"Caught by model: {caught} ({caught/at_risk_total:.0%})")
-    print(f"Estimated caught by current manual process: {manual_estimate} "
-          f"({current_manual_catch_rate:.0%} — assumption, state this on the slide)")
+    print(f"Caught by model: {caught} ({caught / at_risk_total:.0%})")
+    print(
+        f"Estimated caught by current manual process: {manual_estimate} "
+        f"({current_manual_catch_rate:.0%} — assumption, state this on the slide)"
+    )
     print(f"Additional at-risk students caught early: ~{additional}")
 
 

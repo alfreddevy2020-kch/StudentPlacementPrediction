@@ -91,9 +91,9 @@ Central configuration. Resolves artifact paths relative to the file's own
 location, so the server works from any working directory.
 
 ```python
-BASE_DIR          = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
-MODEL_PATH        = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
+MODEL_PATH = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
 ```
 
 Also holds `APP_TITLE`, `APP_DESCRIPTION`, and `APP_VERSION` used by the
@@ -178,10 +178,19 @@ BasePredictor  (ABC)
 
 ```python
 NUMERICAL_FEATURES = [
-    "ssc_percentage", "hsc_percentage", "degree_percentage", "cgpa",
-    "entrance_exam_score", "technical_skill_score", "soft_skill_score",
-    "internship_count", "live_projects", "work_experience_months",
-    "certifications", "attendance_percentage", "backlogs",
+    "ssc_percentage",
+    "hsc_percentage",
+    "degree_percentage",
+    "cgpa",
+    "entrance_exam_score",
+    "technical_skill_score",
+    "soft_skill_score",
+    "internship_count",
+    "live_projects",
+    "work_experience_months",
+    "certifications",
+    "attendance_percentage",
+    "backlogs",
 ]
 
 CATEGORICAL_FEATURES = ["gender", "extracurricular_activities"]
@@ -191,16 +200,16 @@ ALL_FEATURES = NUMERICAL_FEATURES + CATEGORICAL_FEATURES  # 15 total
 
 **`RandomForestPredictor.load()`** — called once at startup:
 ```python
-preprocessor = joblib.load(preprocessor_path)   # ColumnTransformer
-model        = joblib.load(model_path)           # RandomForestClassifier
+preprocessor = joblib.load(preprocessor_path)  # ColumnTransformer
+model = joblib.load(model_path)  # RandomForestClassifier
 ```
 
 **`RandomForestPredictor.predict()`** — called per request:
 ```python
-df            = _input_to_dataframe(data)           # StudentInput → DataFrame
-X_transformed = self._preprocessor.transform(df)   # 15 cols → 17 scaled cols
-label         = int(self._model.predict(X_transformed)[0])
-proba         = self._model.predict_proba(X_transformed)[0]
+df = _input_to_dataframe(data)  # StudentInput → DataFrame
+X_transformed = self._preprocessor.transform(df)  # 15 cols → 17 scaled cols
+label = int(self._model.predict(X_transformed)[0])
+proba = self._model.predict_proba(X_transformed)[0]
 # proba = [P(class=0), P(class=1)]  i.e.  [P(Not Placed), P(Placed)]
 ```
 
@@ -312,7 +321,7 @@ using the `requests` library:
 BACKEND_URL = "http://localhost:8000/api/v1/predict"
 
 response = requests.post(BACKEND_URL, json=payload, timeout=10)
-result   = response.json()
+result = response.json()
 ```
 
 The `payload` dict built by `render_sidebar()` contains exactly the 15
@@ -443,14 +452,21 @@ curl -X POST http://localhost:8000/api/v1/predict `
 import requests
 
 payload = {
-    "ssc_percentage": 75.5, "hsc_percentage": 78.0,
-    "degree_percentage": 72.0, "cgpa": 8.2,
-    "attendance_percentage": 90.0, "backlogs": 0,
-    "entrance_exam_score": 85.0, "technical_skill_score": 80.0,
-    "soft_skill_score": 75.0, "certifications": 3,
-    "live_projects": 1, "internship_count": 2,
+    "ssc_percentage": 75.5,
+    "hsc_percentage": 78.0,
+    "degree_percentage": 72.0,
+    "cgpa": 8.2,
+    "attendance_percentage": 90.0,
+    "backlogs": 0,
+    "entrance_exam_score": 85.0,
+    "technical_skill_score": 80.0,
+    "soft_skill_score": 75.0,
+    "certifications": 3,
+    "live_projects": 1,
+    "internship_count": 2,
     "work_experience_months": 6,
-    "gender": "Male", "extracurricular_activities": "Yes",
+    "gender": "Male",
+    "extracurricular_activities": "Yes",
 }
 
 r = requests.post("http://localhost:8000/api/v1/predict", json=payload)

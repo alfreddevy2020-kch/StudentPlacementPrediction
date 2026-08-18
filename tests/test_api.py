@@ -9,21 +9,18 @@ If artifacts are not available (e.g. in CI without .joblib),
 tests that call the predict endpoint will be skipped automatically.
 """
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 from api.config import MODEL_BUNDLES
 
 # Detect whether production artifacts exist
-_ARTIFACTS_AVAILABLE = all(
-    bundle["model"].exists() for bundle in MODEL_BUNDLES.values()
-)
+_ARTIFACTS_AVAILABLE = all(bundle["model"].exists() for bundle in MODEL_BUNDLES.values())
 
 # Only import/create app if needed (avoids startup errors when not testing API)
 try:
     from api.main import app
+
     _APP_IMPORTABLE = True
 except Exception:
     _APP_IMPORTABLE = False
@@ -64,6 +61,7 @@ def client():
 # Health + Models (no artifacts needed for schema check, but app must import)
 # ---------------------------------------------------------------------------
 
+
 @requires_artifacts
 class TestHealthEndpoint:
     def test_health_returns_200(self, client: TestClient):
@@ -95,6 +93,7 @@ class TestModelsEndpoint:
 # ---------------------------------------------------------------------------
 # Predict endpoint
 # ---------------------------------------------------------------------------
+
 
 @requires_artifacts
 class TestPredictEndpoint:
@@ -140,6 +139,7 @@ class TestPredictEndpoint:
 # Drift + Log summary endpoints
 # ---------------------------------------------------------------------------
 
+
 @requires_artifacts
 class TestDriftEndpoint:
     def test_drift_returns_200(self, client: TestClient):
@@ -149,9 +149,7 @@ class TestDriftEndpoint:
     def test_drift_schema(self, client: TestClient):
         data = client.get("/api/v1/drift?model=xgboost").json()
         assert "status" in data
-        assert data["status"] in (
-            "ok", "warn", "alert", "insufficient_data", "error"
-        )
+        assert data["status"] in ("ok", "warn", "alert", "insufficient_data", "error")
 
     def test_drift_invalid_model_422(self, client: TestClient):
         r = client.get("/api/v1/drift?model=neural_network")

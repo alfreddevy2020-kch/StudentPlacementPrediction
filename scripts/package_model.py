@@ -115,17 +115,27 @@ def package_model(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Package model artifacts for production.")
-    parser.add_argument("--model-name", required=True, help="Model name identifier (e.g. random_forest)")
-    parser.add_argument("--model-version", required=True, help="Model version string (e.g. 2026.08.18-rf.1)")
-    parser.add_argument("--preprocessor", required=True, type=Path, help="Path to source preprocessor.joblib")
-    parser.add_argument("--model", required=True, type=Path, help="Path to source model file (.joblib)")
+    parser.add_argument(
+        "--model-name", required=True, help="Model name identifier (e.g. random_forest)"
+    )
+    parser.add_argument(
+        "--model-version", required=True, help="Model version string (e.g. 2026.08.18-rf.1)"
+    )
+    parser.add_argument(
+        "--preprocessor", required=True, type=Path, help="Path to source preprocessor.joblib"
+    )
+    parser.add_argument(
+        "--model", required=True, type=Path, help="Path to source model file (.joblib)"
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("artifacts/production"),
         help="Root directory for production artifacts (default: artifacts/production)",
     )
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing files in target folder")
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing files in target folder"
+    )
 
     args = parser.parse_args()
 

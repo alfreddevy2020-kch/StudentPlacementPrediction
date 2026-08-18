@@ -19,29 +19,31 @@ import time
 import warnings
 
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 import xgboost as xgb
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.model_selection import (
     GridSearchCV,
     RandomizedSearchCV,
     StratifiedKFold,
 )
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    roc_auc_score,
-    average_precision_score,
-    f1_score,
-    brier_score_loss,
-    roc_curve,
-    precision_recall_curve,
-)
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 warnings.filterwarnings("ignore")
 
@@ -50,25 +52,27 @@ warnings.filterwarnings("ignore")
 # ============================================================
 
 PALETTE = {
-    "primary":   "#4F8EF7",
+    "primary": "#4F8EF7",
     "secondary": "#F7714F",
-    "accent":    "#50C878",
-    "warn":      "#FFD166",
-    "dark":      "#1A1A2E",
-    "light":     "#F5F5F5",
+    "accent": "#50C878",
+    "warn": "#FFD166",
+    "dark": "#1A1A2E",
+    "light": "#F5F5F5",
 }
 
-plt.rcParams.update({
-    "font.family":       "DejaVu Sans",
-    "font.size":         11,
-    "axes.titlesize":    13,
-    "axes.titleweight":  "bold",
-    "axes.spines.top":   False,
-    "axes.spines.right": False,
-    "figure.dpi":        150,
-    "savefig.dpi":       200,
-    "savefig.bbox":      "tight",
-})
+plt.rcParams.update(
+    {
+        "font.family": "DejaVu Sans",
+        "font.size": 11,
+        "axes.titlesize": 13,
+        "axes.titleweight": "bold",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "figure.dpi": 150,
+        "savefig.dpi": 200,
+        "savefig.bbox": "tight",
+    }
+)
 
 # ============================================================
 # 1. LOAD DATA
@@ -78,22 +82,22 @@ print("\n" + "=" * 60)
 print("XGBoost (CUDA GPU) — Student Placement Prediction")
 print("=" * 60)
 
-TRAIN_PATH   = "data/processed/train_processed.csv"
-TEST_PATH    = "data/processed/test_processed.csv"
+TRAIN_PATH = "data/processed/train_processed.csv"
+TEST_PATH = "data/processed/test_processed.csv"
 WEIGHTS_PATH = "data/processed/class_weights.csv"
 
 print("\n[1] Loading preprocessed data ...")
 
-train_df   = pd.read_csv(TRAIN_PATH)
-test_df    = pd.read_csv(TEST_PATH)
+train_df = pd.read_csv(TRAIN_PATH)
+test_df = pd.read_csv(TEST_PATH)
 weights_df = pd.read_csv(WEIGHTS_PATH)
 
 TARGET = "placement_status"
 
 X_train = train_df.drop(columns=[TARGET]).values
 y_train = train_df[TARGET].values
-X_test  = test_df.drop(columns=[TARGET]).values
-y_test  = test_df[TARGET].values
+X_test = test_df.drop(columns=[TARGET]).values
+y_test = test_df[TARGET].values
 
 feature_names = list(train_df.drop(columns=[TARGET]).columns)
 class_weights = dict(zip(weights_df["class"].astype(int), weights_df["weight"]))
@@ -124,9 +128,7 @@ gpu_available = False
 try:
     params_test = {"tree_method": "hist", "device": "cuda"}
     dtrain_test = xgb.DMatrix(X_train[:10], label=y_train[:10])
-    test_model = xgb.train(
-        params_test, dtrain_test, num_boost_round=1, verbose_eval=False
-    )
+    test_model = xgb.train(params_test, dtrain_test, num_boost_round=1, verbose_eval=False)
     gpu_available = True
     print("  GPU (CUDA) is available and working!")
     print("  Device: NVIDIA GeForce RTX 4050")
@@ -147,15 +149,15 @@ print("[3] Phase 1 — RandomizedSearchCV (broad parameter sweep) ...")
 print("-" * 50)
 
 param_dist = {
-    "n_estimators":      [100, 200, 300, 500, 700, 1000],
-    "max_depth":         [3, 4, 5, 6, 8, 10, 12],
-    "learning_rate":     [0.01, 0.02, 0.05, 0.1, 0.15, 0.2],
-    "subsample":         [0.6, 0.7, 0.8, 0.9, 1.0],
-    "colsample_bytree":  [0.6, 0.7, 0.8, 0.9, 1.0],
-    "min_child_weight":  [1, 3, 5, 7, 10],
-    "gamma":             [0, 0.1, 0.2, 0.3, 0.5],
-    "reg_alpha":         [0, 0.01, 0.1, 1, 10],
-    "reg_lambda":        [0, 0.01, 0.1, 1, 10],
+    "n_estimators": [100, 200, 300, 500, 700, 1000],
+    "max_depth": [3, 4, 5, 6, 8, 10, 12],
+    "learning_rate": [0.01, 0.02, 0.05, 0.1, 0.15, 0.2],
+    "subsample": [0.6, 0.7, 0.8, 0.9, 1.0],
+    "colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
+    "min_child_weight": [1, 3, 5, 7, 10],
+    "gamma": [0, 0.1, 0.2, 0.3, 0.5],
+    "reg_alpha": [0, 0.01, 0.1, 1, 10],
+    "reg_lambda": [0, 0.01, 0.1, 1, 10],
 }
 
 base_xgb = xgb.XGBClassifier(
@@ -212,29 +214,29 @@ def neighbors(val, candidates):
     idx = candidates.index(val)
     lo = max(0, idx - 1)
     hi = min(len(candidates) - 1, idx + 1)
-    return list(dict.fromkeys(candidates[lo:hi + 1]))
+    return list(dict.fromkeys(candidates[lo : hi + 1]))
 
 
-int_estimators  = [100, 200, 300, 500, 700, 1000]
-int_depth       = [3, 4, 5, 6, 8, 10, 12]
-float_lr        = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2]
+int_estimators = [100, 200, 300, 500, 700, 1000]
+int_depth = [3, 4, 5, 6, 8, 10, 12]
+float_lr = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2]
 float_subsample = [0.6, 0.7, 0.8, 0.9, 1.0]
 float_colsample = [0.6, 0.7, 0.8, 0.9, 1.0]
-int_mcw         = [1, 3, 5, 7, 10]
-float_gamma     = [0, 0.1, 0.2, 0.3, 0.5]
+int_mcw = [1, 3, 5, 7, 10]
+float_gamma = [0, 0.1, 0.2, 0.3, 0.5]
 float_reg_alpha = [0, 0.01, 0.1, 1, 10]
 float_reg_lambda = [0, 0.01, 0.1, 1, 10]
 
 fine_grid = {
-    "n_estimators":      neighbors(best_random["n_estimators"], int_estimators),
-    "max_depth":         neighbors(best_random["max_depth"], int_depth),
-    "learning_rate":     neighbors(best_random["learning_rate"], float_lr),
-    "subsample":         [best_random["subsample"]],
-    "colsample_bytree":  [best_random["colsample_bytree"]],
-    "min_child_weight":  neighbors(best_random["min_child_weight"], int_mcw),
-    "gamma":             [best_random["gamma"]],
-    "reg_alpha":         [best_random["reg_alpha"]],
-    "reg_lambda":        [best_random["reg_lambda"]],
+    "n_estimators": neighbors(best_random["n_estimators"], int_estimators),
+    "max_depth": neighbors(best_random["max_depth"], int_depth),
+    "learning_rate": neighbors(best_random["learning_rate"], float_lr),
+    "subsample": [best_random["subsample"]],
+    "colsample_bytree": [best_random["colsample_bytree"]],
+    "min_child_weight": neighbors(best_random["min_child_weight"], int_mcw),
+    "gamma": [best_random["gamma"]],
+    "reg_alpha": [best_random["reg_alpha"]],
+    "reg_lambda": [best_random["reg_lambda"]],
 }
 
 print(f"  Fine grid sizes: {', '.join(f'{k}={len(v)}' for k, v in fine_grid.items())}")
@@ -270,7 +272,7 @@ print("\n" + "=" * 60)
 print("[5] TEST SET EVALUATION")
 print("=" * 60)
 
-y_pred  = best_xgb.predict(X_test)
+y_pred = best_xgb.predict(X_test)
 y_proba = best_xgb.predict_proba(X_test)[:, 1]
 
 print("\nClassification Report:")
@@ -281,10 +283,7 @@ print(f"Brier Score       : {brier_score_loss(y_test, y_proba):.4f}")
 
 # Optimal threshold
 thresholds = np.linspace(0.01, 0.99, 200)
-f1_scores = [
-    f1_score(y_test, (y_proba >= t).astype(int), zero_division=0)
-    for t in thresholds
-]
+f1_scores = [f1_score(y_test, (y_proba >= t).astype(int), zero_division=0) for t in thresholds]
 best_threshold = thresholds[np.argmax(f1_scores)]
 best_f1 = max(f1_scores)
 print(f"\nOptimal threshold : {best_threshold:.3f}")
@@ -308,12 +307,18 @@ for k, v in importance_dict.items():
     if idx < len(feature_names):
         mapped_importance[feature_names[idx]] = v
 
-gain_df = pd.DataFrame({
-    "feature":    list(mapped_importance.keys()),
-    "importance": list(mapped_importance.values()),
-}).sort_values("importance", ascending=False).reset_index(drop=True)
+gain_df = (
+    pd.DataFrame(
+        {
+            "feature": list(mapped_importance.keys()),
+            "importance": list(mapped_importance.values()),
+        }
+    )
+    .sort_values("importance", ascending=False)
+    .reset_index(drop=True)
+)
 
-print(f"\n  Top 10 features (Gain):")
+print("\n  Top 10 features (Gain):")
 print(gain_df.head(10).to_string(index=False))
 
 # ============================================================
@@ -332,12 +337,18 @@ for k, v in importance_weight.items():
     if idx < len(feature_names):
         mapped_weight[feature_names[idx]] = v
 
-weight_df = pd.DataFrame({
-    "feature":    list(mapped_weight.keys()),
-    "importance": list(mapped_weight.values()),
-}).sort_values("importance", ascending=False).reset_index(drop=True)
+weight_df = (
+    pd.DataFrame(
+        {
+            "feature": list(mapped_weight.keys()),
+            "importance": list(mapped_weight.values()),
+        }
+    )
+    .sort_values("importance", ascending=False)
+    .reset_index(drop=True)
+)
 
-print(f"\n  Top 10 features (Weight / splits):")
+print("\n  Top 10 features (Weight / splits):")
 print(weight_df.head(10).to_string(index=False))
 
 # ============================================================
@@ -362,11 +373,15 @@ print("\n[9] Generating plots ...")
 # --- Gain Feature Importance ---
 top_gain = gain_df.head(15).iloc[::-1].reset_index(drop=True)
 fig, ax = plt.subplots(figsize=(10, 7))
-colors = [PALETTE["primary"] if i >= len(top_gain) - 5 else PALETTE["secondary"]
-          for i in range(len(top_gain))]
+colors = [
+    PALETTE["primary"] if i >= len(top_gain) - 5 else PALETTE["secondary"]
+    for i in range(len(top_gain))
+]
 ax.barh(top_gain["feature"], top_gain["importance"], color=colors, alpha=0.85, edgecolor="white")
 ax.set_xlabel("Gain Importance")
-ax.set_title("XGBoost — Gain Feature Importance (Top 15)\nMeasures total loss reduction from each feature")
+ax.set_title(
+    "XGBoost — Gain Feature Importance (Top 15)\nMeasures total loss reduction from each feature"
+)
 ax.set_facecolor(PALETTE["light"])
 fig.patch.set_facecolor("white")
 plt.tight_layout()
@@ -377,10 +392,17 @@ print("  Saved: model_results/xgb_feature_importance_gain.png")
 # --- Weight Feature Importance ---
 top_weight = weight_df.head(15).iloc[::-1].reset_index(drop=True)
 fig, ax = plt.subplots(figsize=(10, 7))
-ax.barh(top_weight["feature"], top_weight["importance"],
-        color=PALETTE["accent"], alpha=0.85, edgecolor="white")
+ax.barh(
+    top_weight["feature"],
+    top_weight["importance"],
+    color=PALETTE["accent"],
+    alpha=0.85,
+    edgecolor="white",
+)
 ax.set_xlabel("Weight (Number of Splits)")
-ax.set_title("XGBoost — Split Weight Feature Importance (Top 15)\nCounts how often each feature is used for splitting")
+ax.set_title(
+    "XGBoost — Split Weight Feature Importance (Top 15)\nCounts how often each feature is used for splitting"
+)
 ax.set_facecolor(PALETTE["light"])
 fig.patch.set_facecolor("white")
 plt.tight_layout()
@@ -391,8 +413,13 @@ print("  Saved: model_results/xgb_feature_importance_weight.png")
 # --- ROC Curve ---
 fpr, tpr, roc_thresholds = roc_curve(y_test, y_proba)
 fig, ax = plt.subplots(figsize=(8, 6))
-ax.plot(fpr, tpr, color=PALETTE["primary"], linewidth=2.5,
-        label=f"XGBoost (AUC = {roc_auc_score(y_test, y_proba):.4f})")
+ax.plot(
+    fpr,
+    tpr,
+    color=PALETTE["primary"],
+    linewidth=2.5,
+    label=f"XGBoost (AUC = {roc_auc_score(y_test, y_proba):.4f})",
+)
 ax.plot([0, 1], [0, 1], color="#AAAAAA", linestyle="--", linewidth=1, label="Random")
 ax.set_xlabel("False Positive Rate")
 ax.set_ylabel("True Positive Rate")
@@ -408,8 +435,13 @@ print("  Saved: model_results/xgb_roc_curve.png")
 # --- Precision-Recall Curve ---
 prec, rec, pr_thresholds = precision_recall_curve(y_test, y_proba)
 fig, ax = plt.subplots(figsize=(8, 6))
-ax.plot(rec, prec, color=PALETTE["secondary"], linewidth=2.5,
-        label=f"XGBoost (AP = {average_precision_score(y_test, y_proba):.4f})")
+ax.plot(
+    rec,
+    prec,
+    color=PALETTE["secondary"],
+    linewidth=2.5,
+    label=f"XGBoost (AP = {average_precision_score(y_test, y_proba):.4f})",
+)
 ax.set_xlabel("Recall")
 ax.set_ylabel("Precision")
 ax.set_title("Precision-Recall Curve — XGBoost (CUDA)")
@@ -423,9 +455,15 @@ print("  Saved: model_results/xgb_pr_curve.png")
 
 # --- Confusion Matrix Heatmap ---
 fig, ax = plt.subplots(figsize=(7, 5))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-            xticklabels=["Not Placed", "Placed"],
-            yticklabels=["Not Placed", "Placed"], ax=ax)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    xticklabels=["Not Placed", "Placed"],
+    yticklabels=["Not Placed", "Placed"],
+    ax=ax,
+)
 ax.set_xlabel("Predicted")
 ax.set_ylabel("Actual")
 ax.set_title("Confusion Matrix — XGBoost (CUDA)")
@@ -437,8 +475,13 @@ print("  Saved: model_results/xgb_confusion_matrix.png")
 # --- Threshold Optimization ---
 fig, ax = plt.subplots(figsize=(9, 5))
 ax.plot(thresholds, f1_scores, color=PALETTE["primary"], linewidth=2, label="F1 Score")
-ax.axvline(best_threshold, color=PALETTE["secondary"], linestyle="--", linewidth=1.8,
-           label=f"Optimal threshold = {best_threshold:.3f}  (F1={best_f1:.4f})")
+ax.axvline(
+    best_threshold,
+    color=PALETTE["secondary"],
+    linestyle="--",
+    linewidth=1.8,
+    label=f"Optimal threshold = {best_threshold:.3f}  (F1={best_f1:.4f})",
+)
 ax.axvline(0.5, color="#AAAAAA", linestyle=":", linewidth=1.5, label="Default threshold = 0.5")
 ax.set_xlabel("Classification Threshold")
 ax.set_ylabel("F1 Score")
@@ -452,19 +495,42 @@ plt.close(fig)
 print("  Saved: model_results/xgb_threshold_optimization.png")
 
 # --- Gain vs Weight Importance Side-by-Side ---
-all_features_gain   = gain_df.set_index("feature")["importance"]
+all_features_gain = gain_df.set_index("feature")["importance"]
 all_features_weight = weight_df.set_index("feature")["importance"]
 
-compare_imp = pd.DataFrame({
-    "Gain (normalised)":   all_features_gain / all_features_gain.sum(),
-    "Weight (normalised)": all_features_weight / all_features_weight.sum(),
-}).fillna(0).sort_values("Gain (normalised)", ascending=True).tail(15)
+compare_imp = (
+    pd.DataFrame(
+        {
+            "Gain (normalised)": all_features_gain / all_features_gain.sum(),
+            "Weight (normalised)": all_features_weight / all_features_weight.sum(),
+        }
+    )
+    .fillna(0)
+    .sort_values("Gain (normalised)", ascending=True)
+    .tail(15)
+)
 
 fig, ax = plt.subplots(figsize=(12, 8))
 x = np.arange(len(compare_imp))
 width = 0.4
-ax.barh(x - width / 2, compare_imp["Gain (normalised)"],   width, label="Gain (quality)",     color=PALETTE["primary"],   alpha=0.85, edgecolor="white")
-ax.barh(x + width / 2, compare_imp["Weight (normalised)"], width, label="Weight (frequency)", color=PALETTE["secondary"], alpha=0.85, edgecolor="white")
+ax.barh(
+    x - width / 2,
+    compare_imp["Gain (normalised)"],
+    width,
+    label="Gain (quality)",
+    color=PALETTE["primary"],
+    alpha=0.85,
+    edgecolor="white",
+)
+ax.barh(
+    x + width / 2,
+    compare_imp["Weight (normalised)"],
+    width,
+    label="Weight (frequency)",
+    color=PALETTE["secondary"],
+    alpha=0.85,
+    edgecolor="white",
+)
 ax.set_yticks(x)
 ax.set_yticklabels(compare_imp.index, fontsize=9)
 ax.set_xlabel("Normalised Importance")
@@ -490,21 +556,31 @@ print("[10] Saving preprocessor ...")
 print("-" * 50)
 
 # Rebuild and save the preprocessor so the sample prediction pipeline works
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
 categorical_features = ["gender", "extracurricular_activities"]
 numerical_features = [
-    "ssc_percentage", "hsc_percentage", "degree_percentage", "cgpa",
-    "entrance_exam_score", "technical_skill_score", "soft_skill_score",
-    "internship_count", "live_projects", "work_experience_months",
-    "certifications", "attendance_percentage", "backlogs",
+    "ssc_percentage",
+    "hsc_percentage",
+    "degree_percentage",
+    "cgpa",
+    "entrance_exam_score",
+    "technical_skill_score",
+    "soft_skill_score",
+    "internship_count",
+    "live_projects",
+    "work_experience_months",
+    "certifications",
+    "attendance_percentage",
+    "backlogs",
 ]
 
 preprocessor = ColumnTransformer(
     transformers=[
         ("numerical", StandardScaler(), numerical_features),
-        ("categorical", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
+        (
+            "categorical",
+            OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+            categorical_features,
+        ),
     ]
 )
 
@@ -524,23 +600,27 @@ print("\n" + "-" * 50)
 print("[11] Sample Prediction ...")
 print("-" * 50)
 
-sample_input = pd.DataFrame([{
-    "ssc_percentage":              82.5,
-    "hsc_percentage":              79.2,
-    "degree_percentage":           76.8,
-    "cgpa":                        8.1,
-    "attendance_percentage":       88,
-    "backlogs":                    0,
-    "entrance_exam_score":         84,
-    "technical_skill_score":       78,
-    "soft_skill_score":            81,
-    "certifications":              4,
-    "live_projects":               3,
-    "internship_count":            2,
-    "work_experience_months":      0,
-    "gender":                      "Male",
-    "extracurricular_activities":  "Yes",
-}])
+sample_input = pd.DataFrame(
+    [
+        {
+            "ssc_percentage": 82.5,
+            "hsc_percentage": 79.2,
+            "degree_percentage": 76.8,
+            "cgpa": 8.1,
+            "attendance_percentage": 88,
+            "backlogs": 0,
+            "entrance_exam_score": 84,
+            "technical_skill_score": 78,
+            "soft_skill_score": 81,
+            "certifications": 4,
+            "live_projects": 3,
+            "internship_count": 2,
+            "work_experience_months": 0,
+            "gender": "Male",
+            "extracurricular_activities": "Yes",
+        }
+    ]
+)
 
 sample_processed = preprocessor.transform(sample_input)
 
@@ -557,7 +637,7 @@ elif sample_proba[1] >= 0.5:
 else:
     risk = "Low Probability of Placement (High Risk)"
 
-print(f"\n  Input: ssc=82.5, hsc=79.2, degree=76.8, cgpa=8.1, ...")
+print("\n  Input: ssc=82.5, hsc=79.2, degree=76.8, cgpa=8.1, ...")
 print(f"  Placement Status : {pred_status}")
 print(f"  Placement Label  : {pred_label}")
 print(f"  P(Placed)        : {sample_proba[1]:.4f}")
@@ -582,33 +662,33 @@ print("  Saved model (joblib): part3/models/xgboost_best.joblib")
 
 # Save metadata
 xgb_meta = {
-    "model":                 "XGBoost (CUDA GPU)",
-    "device":                device,
-    "n_estimators":          best_params["n_estimators"],
-    "max_depth":             best_params["max_depth"],
-    "learning_rate":         best_params["learning_rate"],
-    "subsample":             best_params["subsample"],
-    "colsample_bytree":      best_params["colsample_bytree"],
-    "min_child_weight":      best_params["min_child_weight"],
-    "gamma":                 best_params["gamma"],
-    "reg_alpha":             best_params["reg_alpha"],
-    "reg_lambda":            best_params["reg_lambda"],
-    "scale_pos_weight":      round(scale_pos_weight, 4),
-    "cv_f1":                 round(grid_search.best_score_, 4),
-    "test_roc_auc":          round(roc_auc_score(y_test, y_proba), 4),
-    "test_avg_precision":    round(average_precision_score(y_test, y_proba), 4),
-    "test_brier":            round(brier_score_loss(y_test, y_proba), 4),
-    "optimal_threshold":     round(float(best_threshold), 4),
-    "optimal_f1":            round(float(best_f1), 4),
-    "top_gain_feature":      gain_df.iloc[0]["feature"],
-    "top_weight_feature":    weight_df.iloc[0]["feature"],
+    "model": "XGBoost (CUDA GPU)",
+    "device": device,
+    "n_estimators": best_params["n_estimators"],
+    "max_depth": best_params["max_depth"],
+    "learning_rate": best_params["learning_rate"],
+    "subsample": best_params["subsample"],
+    "colsample_bytree": best_params["colsample_bytree"],
+    "min_child_weight": best_params["min_child_weight"],
+    "gamma": best_params["gamma"],
+    "reg_alpha": best_params["reg_alpha"],
+    "reg_lambda": best_params["reg_lambda"],
+    "scale_pos_weight": round(scale_pos_weight, 4),
+    "cv_f1": round(grid_search.best_score_, 4),
+    "test_roc_auc": round(roc_auc_score(y_test, y_proba), 4),
+    "test_avg_precision": round(average_precision_score(y_test, y_proba), 4),
+    "test_brier": round(brier_score_loss(y_test, y_proba), 4),
+    "optimal_threshold": round(float(best_threshold), 4),
+    "optimal_f1": round(float(best_f1), 4),
+    "top_gain_feature": gain_df.iloc[0]["feature"],
+    "top_weight_feature": weight_df.iloc[0]["feature"],
 }
 
 pd.DataFrame([xgb_meta]).to_csv("part3/model_results/xgb_metadata.csv", index=False)
 print("  Saved metadata: part3/model_results/xgb_metadata.csv")
 
 # Save importance tables
-gain_df.to_csv("part3/model_results/xgb_importance_gain.csv",   index=False)
+gain_df.to_csv("part3/model_results/xgb_importance_gain.csv", index=False)
 weight_df.to_csv("part3/model_results/xgb_importance_weight.csv", index=False)
 
 print("\n" + "=" * 60)
