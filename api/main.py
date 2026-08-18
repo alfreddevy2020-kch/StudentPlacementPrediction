@@ -17,13 +17,27 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from api.config import APP_DESCRIPTION, APP_TITLE, APP_VERSION, MODEL_PATH, PREPROCESSOR_PATH
-from api.predictor import RandomForestPredictor
-from api.schemas import HealthResponse, PredictionResponse, StudentInput
+from api.config import (
+    APP_DESCRIPTION,
+    APP_TITLE,
+    APP_VERSION,
+    LOGISTIC_REGRESSION_PATH,
+    PREPROCESSOR_PATH,
+    RANDOM_FOREST_PATH,
+    XGBOOST_PATH,
+)
+from api.predictor import (
+    BasePredictor,
+    LogisticRegressionPredictor,
+    RandomForestPredictor,
+    XGBoostPredictor,
+)
+from api.schemas import HealthResponse, ModelName, PredictionResponse, StudentInput
 
-# ── Singleton predictor ──────────────────────────────────────────────────────
+# ── Predictor registry ──────────────────────────────────────────────────────
 # Loaded once at startup; shared across all requests.
-_predictor: RandomForestPredictor | None = None
+_predictors: dict[str, BasePredictor] = {}
+_preprocessor_loaded: bool = False
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -31,22 +45,33 @@ _predictor: RandomForestPredictor | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
-    Startup: deserialise preprocessor and model artifacts.
+    Startup: deserialise preprocessor and all model artifacts.
     Shutdown: nothing to release (joblib objects are in-memory).
     """
-    global _predictor
-    try:
-        _predictor = RandomForestPredictor.load(PREPROCESSOR_PATH, MODEL_PATH)
-        print(f"[API] [OK] Preprocessor loaded: {PREPROCESSOR_PATH.name}")
-        print(f"[API] [OK] Model loaded:         {MODEL_PATH.name}")
-    except FileNotFoundError as exc:
-        # Artifact missing — server starts in a degraded state.
-        # /health will report degraded; /predict will return 503.
-        print(f"[API] [FAIL] Artifact not found: {exc}")
-        _predictor = None
-    except Exception as exc:
-        print(f"[API] [FAIL] Unexpected error loading artifacts: {exc}")
-        _predictor = None
+    global _preprocessor_loaded
+
+    model_configs: list[tuple[str, type[BasePredictor], type]] = [
+        ("logistic_regression", LogisticRegressionPredictor, LOGISTIC_REGRESSION_PATH),
+        ("random_forest", RandomForestPredictor, RANDOM_FOREST_PATH),
+        ("xgboost", XGBoostPredictor, XGBOOST_PATH),
+    ]
+
+    for model_key, predictor_cls, model_path in model_configs:
+        try:
+            predictor = predictor_cls.load(PREPROCESSOR_PATH, model_path)
+            _predictors[model_key] = predictor
+            print(f"[API] [OK] {predictor.model_display_name} loaded: {model_path.name}")
+        except FileNotFoundError as exc:
+            print(f"[API] [FAIL] Artifact not found for {model_key}: {exc}")
+        except Exception as exc:
+            print(f"[API] [FAIL] Unexpected error loading {model_key}: {exc}")
+
+    _preprocessor_loaded = PREPROCESSOR_PATH.exists()
+
+    if _predictors:
+        print(f"[API] [OK] {len(_predictors)}/3 models loaded successfully.")
+    else:
+        print("[API] [FAIL] No models loaded. Server is in degraded state.")
 
     yield   # server is now running
 
@@ -84,18 +109,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     response_model=HealthResponse,
     summary="Health Check",
     description=(
-        "Liveness probe. Returns `status: healthy` when both the preprocessor "
-        "and the Random Forest model are loaded and ready to serve predictions."
+        "Liveness probe. Returns `status: healthy` when the preprocessor "
+        "and at least one model are loaded and ready to serve predictions."
     ),
     tags=["System"],
 )
 def health_check() -> HealthResponse:
-    preprocessor_ok = _predictor is not None and _predictor._preprocessor is not None
-    model_ok        = _predictor is not None and _predictor._model is not None
+    models_loaded = {
+        key: predictor is not None and predictor.is_ready
+        for key, predictor in _predictors.items()
+    }
+    all_loaded = all(models_loaded.values()) and len(models_loaded) == 3
     return HealthResponse(
-        status="healthy" if (preprocessor_ok and model_ok) else "degraded",
-        preprocessor_loaded=preprocessor_ok,
-        model_loaded=model_ok,
+        status="healthy" if all_loaded else "degraded",
+        preprocessor_loaded=_preprocessor_loaded,
+        models_loaded=models_loaded,
     )
 
 
@@ -104,9 +132,10 @@ def health_check() -> HealthResponse:
     response_model=PredictionResponse,
     summary="Predict Student Placement",
     description=(
-        "Accepts 15 raw student features, applies the fitted preprocessor "
-        "(StandardScaler + OneHotEncoder), and returns a placement prediction "
-        "from the trained Random Forest model.\n\n"
+        "Accepts 15 raw student features and a model selection, applies the "
+        "fitted preprocessor (StandardScaler + OneHotEncoder), and returns a "
+        "placement prediction from the selected model.\n\n"
+        "**Available models:** `logistic_regression`, `random_forest`, `xgboost`.\n\n"
         "**Fields NOT accepted:** `student_id`, `salary_package_lpa`."
     ),
     tags=["Inference"],
@@ -121,22 +150,27 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
     """
     **Inference pipeline (server-side):**
 
-    1. Pydantic validates the 15 raw features (types + value ranges + categorical literals).
-    2. `predictor.predict()` builds a one-row DataFrame and applies the ColumnTransformer.
-    3. The transformed array is passed to `RandomForestClassifier.predict / predict_proba`.
+    1. Pydantic validates the 15 raw features + model selection.
+    2. The selected predictor's `predict()` builds a one-row DataFrame
+       and applies the shared ColumnTransformer.
+    3. The transformed array is passed to the chosen model's predict/predict_proba.
     4. The result is returned as a structured JSON response.
     """
-    if _predictor is None or not _predictor.is_ready:
+    model_key = payload.model.value
+
+    if model_key not in _predictors or not _predictors[model_key].is_ready:
+        available = list(_predictors.keys())
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "Model artifacts are not loaded. "
-                "Check /health for details and ensure the server started correctly."
+                f"Model '{model_key}' is not available. "
+                f"Loaded models: {available}. "
+                "Check /health for details."
             ),
         )
 
     try:
-        return _predictor.predict(payload)
+        return _predictors[model_key].predict(payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

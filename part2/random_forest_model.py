@@ -100,8 +100,8 @@ class_weights = dict(zip(weights_df["class"].astype(int), weights_df["weight"]))
 print(f"  Training  : {X_train.shape[0]} samples, {X_train.shape[1]} features")
 print(f"  Testing   : {X_test.shape[0]} samples")
 
-os.makedirs("models", exist_ok=True)
-os.makedirs("model_results", exist_ok=True)
+os.makedirs("part2/models", exist_ok=True)
+os.makedirs("part2/model_results", exist_ok=True)
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -373,7 +373,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_feature_importance_mdi.png")
 plt.close(fig)
-print("  Saved: model_results/rf_feature_importance_mdi.png")
+print("  Saved: part2/model_results/rf_feature_importance_mdi.png")
 
 # --- Permutation Importance ---
 top_perm = perm_df.head(15).iloc[::-1].reset_index(drop=True)
@@ -388,7 +388,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_feature_importance_permutation.png")
 plt.close(fig)
-print("  Saved: model_results/rf_feature_importance_permutation.png")
+print("  Saved: part2/model_results/rf_feature_importance_permutation.png")
 
 # --- MDI vs Permutation Side-by-Side ---
 # Normalize both to [0,1] for comparison
@@ -422,7 +422,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_importance_comparison.png")
 plt.close(fig)
-print("  Saved: model_results/rf_importance_comparison.png")
+print("  Saved: part2/model_results/rf_importance_comparison.png")
 
 # --- Drop-Column Importance ---
 top_drop = drop_df.head(15).iloc[::-1].reset_index(drop=True)
@@ -437,7 +437,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_drop_column_importance.png")
 plt.close(fig)
-print("  Saved: model_results/rf_drop_column_importance.png")
+print("  Saved: part2/model_results/rf_drop_column_importance.png")
 
 # --- OOB Convergence ---
 fig, ax = plt.subplots(figsize=(9, 5))
@@ -454,7 +454,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_oob_convergence.png")
 plt.close(fig)
-print("  Saved: model_results/rf_oob_convergence.png")
+print("  Saved: part2/model_results/rf_oob_convergence.png")
 
 # --- Learning Curve ---
 fig, ax = plt.subplots(figsize=(9, 5))
@@ -477,7 +477,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_learning_curve.png")
 plt.close(fig)
-print("  Saved: model_results/rf_learning_curve.png")
+print("  Saved: part2/model_results/rf_learning_curve.png")
 
 # --- Threshold Optimization ---
 fig, ax = plt.subplots(figsize=(9, 5))
@@ -494,14 +494,14 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/rf_threshold_optimization.png")
 plt.close(fig)
-print("  Saved: model_results/rf_threshold_optimization.png")
+print("  Saved: part2/model_results/rf_threshold_optimization.png")
 
 # ============================================================
 # 11. SAVE MODEL + METADATA
 # ============================================================
 
 joblib.dump(best_rf, "part2/models/random_forest_best.joblib")
-print("\n  Saved model: models/random_forest_best.joblib")
+print("\n  Saved model: part2/models/random_forest_best.joblib")
 
 rf_meta = {
     "best_n_estimators":  best_params["n_estimators"],
@@ -521,7 +521,7 @@ rf_meta = {
 }
 
 pd.DataFrame([rf_meta]).to_csv("part2/model_results/rf_metadata.csv", index=False)
-print("  Saved metadata: model_results/rf_metadata.csv")
+print("  Saved metadata: part2/model_results/rf_metadata.csv")
 
 # Save importance tables for use in model_comparison.py
 mdi_df.to_csv("part2/model_results/rf_importance_mdi.csv",         index=False)
@@ -532,12 +532,12 @@ print("\n" + "=" * 60)
 print("RANDOM FOREST — COMPLETE")
 print("=" * 60)
 print("\nGenerated artifacts:")
-print("  models/random_forest_best.joblib")
-print("  model_results/rf_feature_importance_mdi.png")
-print("  model_results/rf_feature_importance_permutation.png")
-print("  model_results/rf_importance_comparison.png")
-print("  model_results/rf_drop_column_importance.png")
-print("  model_results/rf_oob_convergence.png")
-print("  model_results/rf_learning_curve.png")
-print("  model_results/rf_threshold_optimization.png")
-print("  model_results/rf_metadata.csv")
+print("  part2/models/random_forest_best.joblib")
+print("  part2/model_results/rf_feature_importance_mdi.png")
+print("  part2/model_results/rf_feature_importance_permutation.png")
+print("  part2/model_results/rf_importance_comparison.png")
+print("  part2/model_results/rf_drop_column_importance.png")
+print("  part2/model_results/rf_oob_convergence.png")
+print("  part2/model_results/rf_learning_curve.png")
+print("  part2/model_results/rf_threshold_optimization.png")
+print("  part2/model_results/rf_metadata.csv")

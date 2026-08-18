@@ -6,16 +6,19 @@ Modular inference layer.
 Architecture
 ~~~~~~~~~~~~
 BasePredictor (ABC)
-    └── RandomForestPredictor   ← current production model
+    ├── LogisticRegressionPredictor
+    ├── RandomForestPredictor
+    └── XGBoostPredictor
 
-To replace Random Forest with XGBoost (or any other model):
-  1. Create a new class that inherits from BasePredictor.
-  2. Override load() and predict().
-  3. In main.py, swap RandomForestPredictor for the new class.
-  The API contract (StudentInput → PredictionResponse) stays unchanged.
+All concrete predictors:
+  1. Receive StudentInput
+  2. Convert it into the same DataFrame structure
+  3. Apply the shared preprocessor
+  4. Run the selected model
+  5. Return a common PredictionResponse
 
 Column ordering note
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 The ColumnTransformer fitted in preprocessing.py selects columns by name,
 so the DataFrame column order does not need to match the transformer order.
 What matters is that all expected column names are present.
@@ -89,6 +92,12 @@ class BasePredictor(abc.ABC):
       - report whether it is ready to serve (is_ready property)
     """
 
+    @property
+    @abc.abstractmethod
+    def model_display_name(self) -> str:
+        """Human-readable model name included in PredictionResponse."""
+        ...
+
     @classmethod
     @abc.abstractmethod
     def load(cls, preprocessor_path: Path, model_path: Path) -> "BasePredictor":
@@ -110,6 +119,68 @@ class BasePredictor(abc.ABC):
         ...
 
 
+# ── Concrete: Logistic Regression ───────────────────────────────────────────
+
+class LogisticRegressionPredictor(BasePredictor):
+    """
+    Inference back-end backed by:
+      - preprocessor.joblib  (sklearn ColumnTransformer)
+      - logistic_regression_best.joblib  (sklearn LogisticRegression)
+    """
+
+    _MODEL_DISPLAY_NAME = "Logistic Regression"
+
+    def __init__(self, preprocessor, model) -> None:
+        self._preprocessor = preprocessor
+        self._model = model
+
+    @property
+    def model_display_name(self) -> str:
+        return self._MODEL_DISPLAY_NAME
+
+    @classmethod
+    def load(
+        cls,
+        preprocessor_path: Path,
+        model_path: Path,
+    ) -> "LogisticRegressionPredictor":
+        if not preprocessor_path.exists():
+            raise FileNotFoundError(
+                f"Preprocessor artifact not found: {preprocessor_path}\n"
+                "Run preprocessing.py to regenerate it."
+            )
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Model artifact not found: {model_path}\n"
+                "Run part2/logistic_regression_model.py to regenerate it."
+            )
+
+        preprocessor = joblib.load(preprocessor_path)
+        model = joblib.load(model_path)
+        return cls(preprocessor, model)
+
+    @property
+    def is_ready(self) -> bool:
+        return self._preprocessor is not None and self._model is not None
+
+    def predict(self, data: StudentInput) -> PredictionResponse:
+        df = _input_to_dataframe(data)
+        X_transformed = self._preprocessor.transform(df)
+        label: int = int(self._model.predict(X_transformed)[0])
+        class_probabilities = self._model.predict_proba(X_transformed)[0]
+        prob_not_placed: float = round(float(class_probabilities[0]), 4)
+        prob_placed:     float = round(float(class_probabilities[1]), 4)
+
+        return PredictionResponse(
+            model_used=self._MODEL_DISPLAY_NAME,
+            placement_status=label,
+            placement_label="Placed" if label == 1 else "Not Placed",
+            probability_placed=prob_placed,
+            probability_not_placed=prob_not_placed,
+            risk_level=_derive_risk_level(prob_placed),
+        )
+
+
 # ── Concrete: Random Forest ──────────────────────────────────────────────────
 
 class RandomForestPredictor(BasePredictor):
@@ -119,11 +190,15 @@ class RandomForestPredictor(BasePredictor):
       - random_forest_best.joblib  (sklearn RandomForestClassifier)
     """
 
+    _MODEL_DISPLAY_NAME = "Random Forest"
+
     def __init__(self, preprocessor, model) -> None:
         self._preprocessor = preprocessor
         self._model = model
 
-    # -- Lifecycle ────────────────────────────────────────────────────────────
+    @property
+    def model_display_name(self) -> str:
+        return self._MODEL_DISPLAY_NAME
 
     @classmethod
     def load(
@@ -151,37 +226,89 @@ class RandomForestPredictor(BasePredictor):
         model = joblib.load(model_path)
         return cls(preprocessor, model)
 
-    # -- Readiness ────────────────────────────────────────────────────────────
+    @property
+    def is_ready(self) -> bool:
+        return self._preprocessor is not None and self._model is not None
+
+    def predict(self, data: StudentInput) -> PredictionResponse:
+        """
+        Full inference pipeline:
+          1. Convert StudentInput -> one-row DataFrame (preserves column names).
+          2. Apply ColumnTransformer (StandardScaler + OneHotEncoder).
+          3. Run RandomForestClassifier.predict + predict_proba.
+          4. Build and return PredictionResponse.
+        """
+        df = _input_to_dataframe(data)
+        X_transformed = self._preprocessor.transform(df)
+        label: int = int(self._model.predict(X_transformed)[0])
+        class_probabilities = self._model.predict_proba(X_transformed)[0]
+        prob_not_placed: float = round(float(class_probabilities[0]), 4)
+        prob_placed:     float = round(float(class_probabilities[1]), 4)
+
+        return PredictionResponse(
+            model_used=self._MODEL_DISPLAY_NAME,
+            placement_status=label,
+            placement_label="Placed" if label == 1 else "Not Placed",
+            probability_placed=prob_placed,
+            probability_not_placed=prob_not_placed,
+            risk_level=_derive_risk_level(prob_placed),
+        )
+
+
+# ── Concrete: XGBoost ───────────────────────────────────────────────────────
+
+class XGBoostPredictor(BasePredictor):
+    """
+    Inference back-end backed by:
+      - preprocessor.joblib  (sklearn ColumnTransformer)
+      - xgboost_best.joblib  (xgboost.XGBClassifier)
+    """
+
+    _MODEL_DISPLAY_NAME = "XGBoost"
+
+    def __init__(self, preprocessor, model) -> None:
+        self._preprocessor = preprocessor
+        self._model = model
+
+    @property
+    def model_display_name(self) -> str:
+        return self._MODEL_DISPLAY_NAME
+
+    @classmethod
+    def load(
+        cls,
+        preprocessor_path: Path,
+        model_path: Path,
+    ) -> "XGBoostPredictor":
+        if not preprocessor_path.exists():
+            raise FileNotFoundError(
+                f"Preprocessor artifact not found: {preprocessor_path}\n"
+                "Run preprocessing.py to regenerate it."
+            )
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Model artifact not found: {model_path}\n"
+                "Run part3/xgboost_model.py to regenerate it."
+            )
+
+        preprocessor = joblib.load(preprocessor_path)
+        model = joblib.load(model_path)
+        return cls(preprocessor, model)
 
     @property
     def is_ready(self) -> bool:
         return self._preprocessor is not None and self._model is not None
 
-    # -- Inference ────────────────────────────────────────────────────────────
-
     def predict(self, data: StudentInput) -> PredictionResponse:
-        """
-        Full inference pipeline:
-          1. Convert StudentInput → one-row DataFrame (preserves column names).
-          2. Apply ColumnTransformer (StandardScaler + OneHotEncoder).
-          3. Run RandomForestClassifier.predict + predict_proba.
-          4. Build and return PredictionResponse.
-        """
-        # Step 1: structured tabular input
         df = _input_to_dataframe(data)
-
-        # Step 2: preprocessing — applies the same scaler / encoder used during training
         X_transformed = self._preprocessor.transform(df)
-
-        # Step 3: model inference
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
-        # predict_proba returns [P(class=0), P(class=1)]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
         prob_placed:     float = round(float(class_probabilities[1]), 4)
 
-        # Step 4: assemble response
         return PredictionResponse(
+            model_used=self._MODEL_DISPLAY_NAME,
             placement_status=label,
             placement_label="Placed" if label == 1 else "Not Placed",
             probability_placed=prob_placed,

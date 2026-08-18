@@ -10,9 +10,19 @@ Validation rules mirror the training-data constraints to prevent out-of-
 distribution inputs from reaching the model silently.
 """
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+# ── Model Selection Enum ────────────────────────────────────────────────────
+
+class ModelName(str, Enum):
+    """Allowed prediction model identifiers."""
+    logistic_regression = "logistic_regression"
+    random_forest = "random_forest"
+    xgboost = "xgboost"
 
 
 # ── Request Schema ──────────────────────────────────────────────────────────
@@ -23,6 +33,13 @@ class StudentInput(BaseModel):
 
     **Do not include** `student_id` or `salary_package_lpa`.
     """
+
+    # ── Model Selection ────────────────────────────────────────────────────
+    model: ModelName = Field(
+        default=ModelName.random_forest,
+        description="Prediction model to use.",
+        examples=["random_forest"],
+    )
 
     # ── Numerical ──────────────────────────────────────────────────────────
     ssc_percentage: float = Field(
@@ -119,6 +136,7 @@ class StudentInput(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "model": "random_forest",
                 "ssc_percentage": 75.5,
                 "hsc_percentage": 78.0,
                 "degree_percentage": 72.0,
@@ -144,6 +162,11 @@ class StudentInput(BaseModel):
 class PredictionResponse(BaseModel):
     """Structured placement prediction returned by POST /api/v1/predict."""
 
+    model_used: str = Field(
+        ...,
+        description="Human-readable name of the model used for prediction.",
+        examples=["Random Forest"],
+    )
     placement_status: int = Field(
         ...,
         description="Binary class label: 1 = Placed, 0 = Not Placed.",
@@ -180,6 +203,7 @@ class PredictionResponse(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "model_used": "Random Forest",
                 "placement_status": 1,
                 "placement_label": "Placed",
                 "probability_placed": 0.938,
@@ -195,7 +219,7 @@ class HealthResponse(BaseModel):
 
     status: str = Field(
         ...,
-        description="'healthy' when both artifacts are loaded; 'degraded' otherwise.",
+        description="'healthy' when all artifacts are loaded; 'degraded' otherwise.",
         examples=["healthy"],
     )
     preprocessor_loaded: bool = Field(
@@ -203,8 +227,8 @@ class HealthResponse(BaseModel):
         description="True when preprocessor.joblib was loaded successfully at startup.",
         examples=[True],
     )
-    model_loaded: bool = Field(
+    models_loaded: dict[str, bool] = Field(
         ...,
-        description="True when random_forest_best.joblib was loaded successfully at startup.",
-        examples=[True],
+        description="Map of model name to whether it was loaded successfully.",
+        examples=[{"logistic_regression": True, "random_forest": True, "xgboost": True}],
     )

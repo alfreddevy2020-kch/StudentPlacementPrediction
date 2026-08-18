@@ -189,6 +189,21 @@ def render_sidebar() -> tuple[dict, object]:
                 if parsed[parsed_key] is not None:
                     st.session_state[widget_key] = parsed[parsed_key]
 
+    # -- Prediction Model ---------------------------------------------------
+    st.sidebar.header("Prediction Model")
+    prediction_model = st.sidebar.selectbox(
+        "Prediction Model",
+        key="prediction_model",
+        options=["random_forest", "logistic_regression", "xgboost"],
+        index=0,
+        format_func=lambda x: {
+            "random_forest": "Random Forest",
+            "logistic_regression": "Logistic Regression",
+            "xgboost": "XGBoost",
+        }[x],
+        help="Select which trained ML model to use for prediction",
+    )
+
     # -- Academic Performance -----------------------------------------------
     st.sidebar.header("Academic Performance")
     cgpa = st.sidebar.slider(
@@ -281,6 +296,7 @@ def render_sidebar() -> tuple[dict, object]:
     # -- Structured payload --------------------------------------------------
     # Keys match the FastAPI /predict contract exactly.
     payload = {
+        "model": prediction_model,
         "ssc_percentage": ssc_percentage,
         "hsc_percentage": hsc_percentage,
         "degree_percentage": degree_percentage,
@@ -467,12 +483,14 @@ def main() -> None:
 
     # Backend response contract:
     # {
+    #     "model_used": "<string>",
     #     "placement_status": 1 | 0,
     #     "placement_label": "Placed" | "Not Placed",
     #     "probability_placed": <float 0-1>,
     #     "probability_not_placed": <float 0-1>,
     #     "risk_level": "<string>"
     # }
+    model_used: str = result.get("model_used", "Unknown")
     probability_placed: float = result.get("probability_placed", 0.0)
     placement_label: str = result.get("placement_label", "Unknown")
     risk_level: str = result.get("risk_level", "Unknown")
@@ -487,7 +505,10 @@ def main() -> None:
             value=f"{probability_placed * 100:.1f}%",
         )
 
-    # -- Placement status & risk level ---------------------------------------
+    # -- Prediction model & placement status ---------------------------------
+    st.markdown(
+        f"**Prediction Model:** {model_used}"
+    )
     st.markdown(
         f"**Status:** {placement_label} &nbsp; | &nbsp; **Risk:** {risk_level}"
     )

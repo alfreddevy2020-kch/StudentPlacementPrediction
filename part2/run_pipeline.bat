@@ -63,7 +63,7 @@ IF %ERRORLEVEL% NEQ 0 (echo ERROR: model_summary_report.py failed. & pause & exi
 
 echo.
 echo =====================================================
-echo  PIPELINE COMPLETE — Check model_results\ folder
+echo  PIPELINE COMPLETE — Check part2\model_results\ folder
 echo =====================================================
 echo.
 pause
