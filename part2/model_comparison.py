@@ -83,7 +83,7 @@ print("\n" + "=" * 60)
 print("MODEL COMPARISON — Logistic Regression vs Random Forest")
 print("=" * 60)
 
-os.makedirs("model_results", exist_ok=True)
+os.makedirs("part2/model_results", exist_ok=True)
 
 print("\n[1] Loading models and test data ...")
 
@@ -234,7 +234,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/comparison_roc_curves.png")
 plt.close(fig)
-print("  Saved: model_results/comparison_roc_curves.png")
+print("  Saved: part2/model_results/comparison_roc_curves.png")
 
 # ============================================================
 # 6. PLOT 2 — Precision-Recall Curves
@@ -268,7 +268,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/comparison_pr_curves.png")
 plt.close(fig)
-print("  Saved: model_results/comparison_pr_curves.png")
+print("  Saved: part2/model_results/comparison_pr_curves.png")
 
 # ============================================================
 # 7. PLOT 3 — Calibration Plot (Reliability Diagram)
@@ -296,7 +296,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/comparison_calibration.png")
 plt.close(fig)
-print("  Saved: model_results/comparison_calibration.png")
+print("  Saved: part2/model_results/comparison_calibration.png")
 
 # ============================================================
 # 8. PLOT 4 — Threshold Sweep (Precision, Recall, F1)
@@ -344,7 +344,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/comparison_threshold_analysis.png")
 plt.close(fig)
-print("  Saved: model_results/comparison_threshold_analysis.png")
+print("  Saved: part2/model_results/comparison_threshold_analysis.png")
 
 # ============================================================
 # 9. PLOT 5 — Metrics Comparison Table (as image for slides)
@@ -391,7 +391,7 @@ fig.patch.set_facecolor("white")
 plt.tight_layout()
 plt.savefig("part2/model_results/comparison_metrics_table.png")
 plt.close(fig)
-print("  Saved: model_results/comparison_metrics_table.png")
+print("  Saved: part2/model_results/comparison_metrics_table.png")
 
 # ============================================================
 # 10. SAVE MCNEMAR RESULT
@@ -435,10 +435,10 @@ else:
     print("  -> No significant difference in error patterns")
 
 print("\n  Generated artifacts:")
-print("  model_results/comparison_roc_curves.png")
-print("  model_results/comparison_pr_curves.png")
-print("  model_results/comparison_calibration.png")
-print("  model_results/comparison_threshold_analysis.png")
-print("  model_results/comparison_metrics_table.png")
-print("  model_results/comparison_metrics.csv")
-print("  model_results/mcnemar_test.csv")
+print("  part2/model_results/comparison_roc_curves.png")
+print("  part2/model_results/comparison_pr_curves.png")
+print("  part2/model_results/comparison_calibration.png")
+print("  part2/model_results/comparison_threshold_analysis.png")
+print("  part2/model_results/comparison_metrics_table.png")
+print("  part2/model_results/comparison_metrics.csv")
+print("  part2/model_results/mcnemar_test.csv")

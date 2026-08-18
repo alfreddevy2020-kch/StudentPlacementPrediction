@@ -66,7 +66,7 @@ print("\n" + "=" * 60)
 print("MODEL SUMMARY REPORT GENERATOR")
 print("=" * 60)
 
-os.makedirs("model_results", exist_ok=True)
+os.makedirs("part2/model_results", exist_ok=True)
 
 logreg = joblib.load("part2/models/logistic_regression_best.joblib")
 rf     = joblib.load("part2/models/random_forest_best.joblib")
@@ -253,7 +253,7 @@ with open("part2/model_results/model_report.txt", "w", encoding="utf-8") as f:
     f.write(report_text)
 
 print(report_text)
-print("\n  Saved: model_results/model_report.txt")
+print("\n  Saved: part2/model_results/model_report.txt")
 
 # ============================================================
 # 3. EXECUTIVE SUMMARY FIGURE  (4-panel, slide-ready)
@@ -339,11 +339,11 @@ fig.suptitle(
 
 plt.savefig("part2/model_results/executive_summary.png")
 plt.close(fig)
-print("  Saved: model_results/executive_summary.png")
+print("  Saved: part2/model_results/executive_summary.png")
 
 print("\n" + "=" * 60)
 print("SUMMARY REPORT — COMPLETE")
 print("=" * 60)
 print("\nGenerated artifacts:")
-print("  model_results/model_report.txt")
-print("  model_results/executive_summary.png")
+print("  part2/model_results/model_report.txt")
+print("  part2/model_results/executive_summary.png")

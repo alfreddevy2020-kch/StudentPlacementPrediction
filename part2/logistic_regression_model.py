@@ -105,8 +105,8 @@ print(f"  Class weights: {class_weights}")
 # 2. OUTPUT DIRECTORIES
 # ============================================================
 
-os.makedirs("models", exist_ok=True)
-os.makedirs("model_results", exist_ok=True)
+os.makedirs("part2/models", exist_ok=True)
+os.makedirs("part2/model_results", exist_ok=True)
 
 # ============================================================
 # 3. CROSS-VALIDATION SETUP
@@ -452,7 +452,7 @@ print("  Saved: model_results/logreg_threshold_optimization.png")
 # ============================================================
 
 joblib.dump(best_l2, "part2/models/logistic_regression_best.joblib")
-print("\n  Saved model: models/logistic_regression_best.joblib")
+print("\n  Saved model: part2/models/logistic_regression_best.joblib")
 
 # Save metadata for use in model_comparison.py
 logreg_meta = {
@@ -470,16 +470,16 @@ logreg_meta = {
 }
 
 pd.DataFrame([logreg_meta]).to_csv("part2/model_results/logreg_metadata.csv", index=False)
-print("  Saved metadata: model_results/logreg_metadata.csv")
+print("  Saved metadata: part2/model_results/logreg_metadata.csv")
 
 print("\n" + "=" * 60)
 print("LOGISTIC REGRESSION — COMPLETE")
 print("=" * 60)
 print("\nGenerated artifacts:")
-print("  models/logistic_regression_best.joblib")
-print("  model_results/logreg_coefficient_importance.png")
-print("  model_results/logreg_l1_vs_l2_coefficients.png")
-print("  model_results/logreg_bootstrap_ci.png")
-print("  model_results/logreg_regularization_tuning.png")
-print("  model_results/logreg_threshold_optimization.png")
-print("  model_results/logreg_metadata.csv")
+print("  part2/models/logistic_regression_best.joblib")
+print("  part2/model_results/logreg_coefficient_importance.png")
+print("  part2/model_results/logreg_l1_vs_l2_coefficients.png")
+print("  part2/model_results/logreg_bootstrap_ci.png")
+print("  part2/model_results/logreg_regularization_tuning.png")
+print("  part2/model_results/logreg_threshold_optimization.png")
+print("  part2/model_results/logreg_metadata.csv")
