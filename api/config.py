@@ -2,7 +2,7 @@
 api/config.py
 -------------
 Central place for artifact paths and FastAPI application metadata.
-Change PREPROCESSOR_PATH / MODEL_PATH here when swapping to a new model artifact.
+Change paths here when swapping model artifacts.
 """
 
 from pathlib import Path
@@ -11,8 +11,10 @@ from pathlib import Path
 # Resolved relative to this file so the server works regardless of the
 # working directory from which uvicorn is launched.
 BASE_DIR = Path(__file__).resolve().parent.parent   # repo root
-PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
-MODEL_PATH        = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
+PREPROCESSOR_PATH         = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
+LOGISTIC_REGRESSION_PATH  = BASE_DIR / "part2" / "models" / "logistic_regression_best.joblib"
+RANDOM_FOREST_PATH        = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
+XGBOOST_PATH              = BASE_DIR / "part3" / "models" / "xgboost_best.joblib"
 
 # ── OpenAPI / App Metadata ─────────────────────────────────────────────────
 APP_TITLE = "Student Placement Prediction API"
