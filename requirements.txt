@@ -24,3 +24,9 @@ pdfplumber>=0.10.0
 
 # Role 4 - Explainability & Fairness
 shap>=0.44.0
+
+# Class Imbalance Handling (used by preprocessing.py)
+imbalanced-learn>=0.11.0
+
+# Environment Variable Management
+python-dotenv>=1.0.0

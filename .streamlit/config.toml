@@ -1,0 +1,67 @@
+# PlacementPulse AI - Streamlit Executive Dark Theme Configuration
+# Ported from prediction.txt design system
+
+[theme]
+base = "dark"
+primaryColor = "#60A5FA"             # Electric Blue / Indigo for interactive actions
+backgroundColor = "#0F172A"          # Deep Slate Canvas
+secondaryBackgroundColor = "#1E293B" # Slightly lighter Slate for Card Containers
+codeBackgroundColor = "#1E293B"
+textColor = "#F8FAFC"                # High-contrast Crisp Text
+linkColor = "#60A5FA"
+borderColor = "#334155"              # Refined border color
+codeTextColor = "#CBD5E1"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "6px"                   # Modern subtle curvature
+buttonRadius = "6px"
+
+# Typography - Clean, professional fonts
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+codeFontSize = "13px"
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+
+# Semantic Status Palette
+greenColor = "#34D399"  # Ready / Positive Status
+redColor = "#F87171"    # High Risk / Deficit
+yellowColor = "#FBBF24" # Moderate Risk / Warning
+orangeColor = "#FB923C" # Alerts / Remediation
+blueColor = "#60A5FA"   # Information / Primary
+violetColor = "#A78BFA" # Composite / Engineered Indices
+grayColor = "#94A3B8"   # Secondary Labels / Subtitles
+
+# Chart Categorical Colors
+chartCategoricalColors = [
+    "#60A5FA",
+    "#34D399",
+    "#A78BFA",
+    "#F87171",
+    "#FBBF24",
+    "#38BDF8",
+    "#94A3B8",
+    "#FB923C",
+]
+
+# Dataframe & Table Styling
+dataframeBorderColor = "#334155"
+dataframeHeaderBackgroundColor = "#1E293B"
+
+# Sidebar Theming
+[theme.sidebar]
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+codeBackgroundColor = "#1E293B"
+textColor = "#F8FAFC"
+borderColor = "#334155"
+primaryColor = "#60A5FA"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true

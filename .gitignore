@@ -106,3 +106,13 @@ part3/model_results/
 
 part4/models/
 part4/explainability_results/
+
+# ==============================
+# Streamlit AI Agent Skills
+# ==============================
+
+.agents/skills/developing-with-streamlit
+.claude/skills/developing-with-streamlit
+
+prediction.txt
+cognizant-hackathon-playbook (1).md
