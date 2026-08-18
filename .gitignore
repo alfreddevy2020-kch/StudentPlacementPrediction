@@ -98,5 +98,4 @@ venv/
 # Model outputs (generated)
 # ==============================
 
-part2/models/
 part2/model_results/
