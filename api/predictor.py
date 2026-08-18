@@ -27,7 +27,10 @@ What matters is that all expected column names are present.
 from __future__ import annotations
 
 import abc
+import hashlib
+import json
 from pathlib import Path
+from typing import Any
 
 import joblib
 import pandas as pd
@@ -58,8 +61,37 @@ CATEGORICAL_FEATURES: list[str] = [
 
 ALL_FEATURES: list[str] = NUMERICAL_FEATURES + CATEGORICAL_FEATURES
 
+# Sample valid student record used for startup smoke-testing
+_SAMPLE_VALID_RECORD = {
+    "ssc_percentage": [75.0],
+    "hsc_percentage": [75.0],
+    "degree_percentage": [75.0],
+    "cgpa": [8.0],
+    "attendance_percentage": [85.0],
+    "backlogs": [0],
+    "entrance_exam_score": [80.0],
+    "technical_skill_score": [75.0],
+    "soft_skill_score": [75.0],
+    "certifications": [2],
+    "live_projects": [1],
+    "internship_count": [1],
+    "work_experience_months": [0],
+    "gender": ["Male"],
+    "extracurricular_activities": ["Yes"],
+}
+
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _compute_sha256(filepath: Path) -> str:
+    """Compute the SHA-256 checksum of a file on disk."""
+    hasher = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(65536):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
 
 def _input_to_dataframe(data: StudentInput) -> pd.DataFrame:
     """
@@ -80,7 +112,88 @@ def _derive_risk_level(prob_placed: float) -> str:
     return "High Risk of Non-Placement"
 
 
+def verify_and_load_bundle(
+    model_key: str,
+    preprocessor_path: Path,
+    model_path: Path,
+    manifest_path: Path | None = None,
+) -> tuple[Any, Any, dict]:
+    """
+    Strict validation of a production model bundle:
+      1. Verify artifact files exist.
+      2. Verify manifest.json exists, matches schema, and model_name matches model_key.
+      3. Verify SHA-256 checksums of model and preprocessor match manifest.
+      4. Verify preprocessor can transform a valid sample input.
+      5. Verify model supports predict() and predict_proba().
+    """
+    if not preprocessor_path.exists():
+        raise FileNotFoundError(f"Preprocessor file missing: {preprocessor_path}")
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file missing: {model_path}")
+
+    manifest: dict = {}
+    if manifest_path is not None:
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Manifest file missing: {manifest_path}")
+
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        manifest_model_name = manifest.get("model_name")
+        if manifest_model_name != model_key:
+            raise ValueError(
+                f"Manifest model_name mismatch: expected '{model_key}', got '{manifest_model_name}'"
+            )
+
+        # Validate checksums
+        expected_prep_sha = manifest.get("artifacts", {}).get("preprocessor", {}).get("sha256")
+        expected_model_sha = manifest.get("artifacts", {}).get("model", {}).get("sha256")
+
+        if not expected_prep_sha or not expected_model_sha:
+            raise ValueError(f"Manifest in {manifest_path} is missing artifact SHA-256 entries.")
+
+        actual_prep_sha = _compute_sha256(preprocessor_path)
+        if actual_prep_sha != expected_prep_sha:
+            raise ValueError(
+                f"Preprocessor SHA-256 mismatch for {model_key}:\n"
+                f"  Expected: {expected_prep_sha}\n"
+                f"  Actual:   {actual_prep_sha}"
+            )
+
+        actual_model_sha = _compute_sha256(model_path)
+        if actual_model_sha != expected_model_sha:
+            raise ValueError(
+                f"Model SHA-256 mismatch for {model_key}:\n"
+                f"  Expected: {expected_model_sha}\n"
+                f"  Actual:   {actual_model_sha}"
+            )
+
+    # Load artifacts
+    preprocessor = joblib.load(preprocessor_path)
+    model = joblib.load(model_path)
+
+    # Smoke-test transformation
+    try:
+        sample_df = pd.DataFrame(_SAMPLE_VALID_RECORD)
+        X_sample = preprocessor.transform(sample_df)
+    except Exception as exc:
+        raise RuntimeError(f"Preprocessor validation failed for {model_key}: {exc}") from exc
+
+    # Smoke-test prediction & probability
+    if not hasattr(model, "predict") or not hasattr(model, "predict_proba"):
+        raise TypeError(f"Model for {model_key} must implement predict() and predict_proba().")
+
+    try:
+        _ = model.predict(X_sample)
+        _ = model.predict_proba(X_sample)
+    except Exception as exc:
+        raise RuntimeError(f"Model prediction validation failed for {model_key}: {exc}") from exc
+
+    return preprocessor, model, manifest
+
+
 # ── Abstract Base ────────────────────────────────────────────────────────────
+
 
 class BasePredictor(abc.ABC):
     """
@@ -98,10 +211,20 @@ class BasePredictor(abc.ABC):
         """Human-readable model name included in PredictionResponse."""
         ...
 
+    @property
+    def model_version(self) -> str:
+        """Model version string from manifest."""
+        return getattr(self, "_model_version", "1.0.0")
+
     @classmethod
     @abc.abstractmethod
-    def load(cls, preprocessor_path: Path, model_path: Path) -> "BasePredictor":
-        """Load preprocessor and model artifacts from disk."""
+    def load(
+        cls,
+        preprocessor_path: Path,
+        model_path: Path,
+        manifest_path: Path | None = None,
+    ) -> BasePredictor:
+        """Load preprocessor and model artifacts from disk with manifest validation."""
         ...
 
     @abc.abstractmethod
@@ -121,18 +244,17 @@ class BasePredictor(abc.ABC):
 
 # ── Concrete: Logistic Regression ───────────────────────────────────────────
 
+
 class LogisticRegressionPredictor(BasePredictor):
-    """
-    Inference back-end backed by:
-      - preprocessor.joblib  (sklearn ColumnTransformer)
-      - logistic_regression_best.joblib  (sklearn LogisticRegression)
-    """
+    """Inference back-end for Logistic Regression."""
 
     _MODEL_DISPLAY_NAME = "Logistic Regression"
 
-    def __init__(self, preprocessor, model) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
+        self._manifest = manifest or {}
+        self._model_version = self._manifest.get("model_version", "1.0.0")
 
     @property
     def model_display_name(self) -> str:
@@ -143,21 +265,15 @@ class LogisticRegressionPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-    ) -> "LogisticRegressionPredictor":
-        if not preprocessor_path.exists():
-            raise FileNotFoundError(
-                f"Preprocessor artifact not found: {preprocessor_path}\n"
-                "Run preprocessing.py to regenerate it."
-            )
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Model artifact not found: {model_path}\n"
-                "Run part2/logistic_regression_model.py to regenerate it."
-            )
-
-        preprocessor = joblib.load(preprocessor_path)
-        model = joblib.load(model_path)
-        return cls(preprocessor, model)
+        manifest_path: Path | None = None,
+    ) -> LogisticRegressionPredictor:
+        preprocessor, model, manifest = verify_and_load_bundle(
+            "logistic_regression",
+            preprocessor_path,
+            model_path,
+            manifest_path,
+        )
+        return cls(preprocessor, model, manifest)
 
     @property
     def is_ready(self) -> bool:
@@ -169,7 +285,7 @@ class LogisticRegressionPredictor(BasePredictor):
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,
@@ -183,18 +299,17 @@ class LogisticRegressionPredictor(BasePredictor):
 
 # ── Concrete: Random Forest ──────────────────────────────────────────────────
 
+
 class RandomForestPredictor(BasePredictor):
-    """
-    Inference back-end backed by:
-      - preprocessor.joblib  (sklearn ColumnTransformer)
-      - random_forest_best.joblib  (sklearn RandomForestClassifier)
-    """
+    """Inference back-end for Random Forest."""
 
     _MODEL_DISPLAY_NAME = "Random Forest"
 
-    def __init__(self, preprocessor, model) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
+        self._manifest = manifest or {}
+        self._model_version = self._manifest.get("model_version", "1.0.0")
 
     @property
     def model_display_name(self) -> str:
@@ -205,45 +320,27 @@ class RandomForestPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-    ) -> "RandomForestPredictor":
-        """
-        Deserialise both artifacts from disk.
-        Called once during application startup via the lifespan handler.
-        Raises FileNotFoundError if either artifact is missing.
-        """
-        if not preprocessor_path.exists():
-            raise FileNotFoundError(
-                f"Preprocessor artifact not found: {preprocessor_path}\n"
-                "Run preprocessing.py to regenerate it."
-            )
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Model artifact not found: {model_path}\n"
-                "Run part2/random_forest_model.py to regenerate it."
-            )
-
-        preprocessor = joblib.load(preprocessor_path)
-        model = joblib.load(model_path)
-        return cls(preprocessor, model)
+        manifest_path: Path | None = None,
+    ) -> RandomForestPredictor:
+        preprocessor, model, manifest = verify_and_load_bundle(
+            "random_forest",
+            preprocessor_path,
+            model_path,
+            manifest_path,
+        )
+        return cls(preprocessor, model, manifest)
 
     @property
     def is_ready(self) -> bool:
         return self._preprocessor is not None and self._model is not None
 
     def predict(self, data: StudentInput) -> PredictionResponse:
-        """
-        Full inference pipeline:
-          1. Convert StudentInput -> one-row DataFrame (preserves column names).
-          2. Apply ColumnTransformer (StandardScaler + OneHotEncoder).
-          3. Run RandomForestClassifier.predict + predict_proba.
-          4. Build and return PredictionResponse.
-        """
         df = _input_to_dataframe(data)
         X_transformed = self._preprocessor.transform(df)
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,
@@ -257,18 +354,17 @@ class RandomForestPredictor(BasePredictor):
 
 # ── Concrete: XGBoost ───────────────────────────────────────────────────────
 
+
 class XGBoostPredictor(BasePredictor):
-    """
-    Inference back-end backed by:
-      - preprocessor.joblib  (sklearn ColumnTransformer)
-      - xgboost_best.joblib  (xgboost.XGBClassifier)
-    """
+    """Inference back-end for XGBoost."""
 
     _MODEL_DISPLAY_NAME = "XGBoost"
 
-    def __init__(self, preprocessor, model) -> None:
+    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
         self._preprocessor = preprocessor
         self._model = model
+        self._manifest = manifest or {}
+        self._model_version = self._manifest.get("model_version", "1.0.0")
 
     @property
     def model_display_name(self) -> str:
@@ -279,21 +375,15 @@ class XGBoostPredictor(BasePredictor):
         cls,
         preprocessor_path: Path,
         model_path: Path,
-    ) -> "XGBoostPredictor":
-        if not preprocessor_path.exists():
-            raise FileNotFoundError(
-                f"Preprocessor artifact not found: {preprocessor_path}\n"
-                "Run preprocessing.py to regenerate it."
-            )
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Model artifact not found: {model_path}\n"
-                "Run part3/xgboost_model.py to regenerate it."
-            )
-
-        preprocessor = joblib.load(preprocessor_path)
-        model = joblib.load(model_path)
-        return cls(preprocessor, model)
+        manifest_path: Path | None = None,
+    ) -> XGBoostPredictor:
+        preprocessor, model, manifest = verify_and_load_bundle(
+            "xgboost",
+            preprocessor_path,
+            model_path,
+            manifest_path,
+        )
+        return cls(preprocessor, model, manifest)
 
     @property
     def is_ready(self) -> bool:
@@ -305,7 +395,7 @@ class XGBoostPredictor(BasePredictor):
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
         prob_not_placed: float = round(float(class_probabilities[0]), 4)
-        prob_placed:     float = round(float(class_probabilities[1]), 4)
+        prob_placed: float = round(float(class_probabilities[1]), 4)
 
         return PredictionResponse(
             model_used=self._MODEL_DISPLAY_NAME,

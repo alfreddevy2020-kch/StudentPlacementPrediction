@@ -15,17 +15,19 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ── Model Selection Enum ────────────────────────────────────────────────────
+
 
 class ModelName(str, Enum):
     """Allowed prediction model identifiers."""
+
     logistic_regression = "logistic_regression"
     random_forest = "random_forest"
     xgboost = "xgboost"
 
 
 # ── Request Schema ──────────────────────────────────────────────────────────
+
 
 class StudentInput(BaseModel):
     """
@@ -44,31 +46,36 @@ class StudentInput(BaseModel):
     # ── Numerical ──────────────────────────────────────────────────────────
     ssc_percentage: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Secondary School (10th grade) percentage.",
         examples=[75.5],
     )
     hsc_percentage: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Higher Secondary (12th grade) percentage.",
         examples=[78.0],
     )
     degree_percentage: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Undergraduate degree percentage.",
         examples=[72.0],
     )
     cgpa: float = Field(
         ...,
-        ge=0.0, le=10.0,
+        ge=0.0,
+        le=10.0,
         description="College Cumulative GPA on a 10-point scale.",
         examples=[8.2],
     )
     attendance_percentage: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="College attendance percentage.",
         examples=[90.0],
     )
@@ -80,19 +87,22 @@ class StudentInput(BaseModel):
     )
     entrance_exam_score: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Entrance examination score.",
         examples=[85.0],
     )
     technical_skill_score: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Technical / coding skills assessment score.",
         examples=[80.0],
     )
     soft_skill_score: float = Field(
         ...,
-        ge=0.0, le=100.0,
+        ge=0.0,
+        le=100.0,
         description="Soft skills (communication, teamwork) assessment score.",
         examples=[75.0],
     )
@@ -159,6 +169,7 @@ class StudentInput(BaseModel):
 
 # ── Response Schemas ────────────────────────────────────────────────────────
 
+
 class PredictionResponse(BaseModel):
     """Structured placement prediction returned by POST /api/v1/predict."""
 
@@ -179,13 +190,15 @@ class PredictionResponse(BaseModel):
     )
     probability_placed: float = Field(
         ...,
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Model confidence (0–1) that the student will be placed.",
         examples=[0.938],
     )
     probability_not_placed: float = Field(
         ...,
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="Model confidence (0–1) that the student will NOT be placed.",
         examples=[0.062],
     )
@@ -219,16 +232,21 @@ class HealthResponse(BaseModel):
 
     status: str = Field(
         ...,
-        description="'healthy' when all artifacts are loaded; 'degraded' otherwise.",
+        description="'healthy' (all models loaded), 'degraded' (1-2 models loaded), or 'unavailable' (0 loaded).",
         examples=["healthy"],
-    )
-    preprocessor_loaded: bool = Field(
-        ...,
-        description="True when preprocessor.joblib was loaded successfully at startup.",
-        examples=[True],
     )
     models_loaded: dict[str, bool] = Field(
         ...,
         description="Map of model name to whether it was loaded successfully.",
         examples=[{"logistic_regression": True, "random_forest": True, "xgboost": True}],
+    )
+
+
+class ModelsResponse(BaseModel):
+    """Payload returned by GET /api/v1/models."""
+
+    available_models: list[str] = Field(
+        ...,
+        description="List of model identifiers available for inference.",
+        examples=[["logistic_regression", "random_forest", "xgboost"]],
     )

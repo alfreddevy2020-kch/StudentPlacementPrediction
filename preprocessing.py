@@ -1,15 +1,12 @@
-import pandas as pd
-import numpy as np
 import joblib
-
-from sklearn.model_selection import train_test_split
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
+import numpy as np
+import pandas as pd
 from imblearn.over_sampling import SMOTE
-
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # ============================================================
 # 1. LOAD DATASET
@@ -56,10 +53,7 @@ else:
 # 3. TARGET CREATION
 # ============================================================
 
-df["placement_target"] = df["placement_status"].map({
-    "Not Placed": 0,
-    "Placed": 1
-})
+df["placement_target"] = df["placement_status"].map({"Not Placed": 0, "Placed": 1})
 
 
 print("\n" + "=" * 60)
@@ -72,12 +66,7 @@ print(target_counts)
 
 print("\nTarget percentage:")
 
-target_percentage = (
-    df["placement_target"]
-    .value_counts(normalize=True)
-    .mul(100)
-    .round(2)
-)
+target_percentage = df["placement_target"].value_counts(normalize=True).mul(100).round(2)
 
 print(target_percentage)
 
@@ -106,15 +95,10 @@ print("=" * 60)
 # ------------------------------------------------------------
 
 df["experience_score"] = (
-    df["internships_count"]
-    + df["projects_count"]
-    + df["hackathons_participated"]
+    df["internships_count"] + df["projects_count"] + df["hackathons_participated"]
 )
 
-df["internship_project_score"] = (
-    df["internships_count"]
-    * df["projects_count"]
-)
+df["internship_project_score"] = df["internships_count"] * df["projects_count"]
 
 
 # ------------------------------------------------------------
@@ -126,7 +110,7 @@ skill_columns = [
     "aptitude_score",
     "communication_skill_score",
     "logical_reasoning_score",
-    "mock_interview_score"
+    "mock_interview_score",
 ]
 
 df["overall_skill_score"] = df[skill_columns].mean(axis=1)
@@ -136,20 +120,14 @@ df["overall_skill_score"] = df[skill_columns].mean(axis=1)
 # Technical skills
 # ------------------------------------------------------------
 
-df["technical_skill_score"] = (
-    df["coding_skill_score"]
-    + df["logical_reasoning_score"]
-) / 2
+df["technical_skill_score"] = (df["coding_skill_score"] + df["logical_reasoning_score"]) / 2
 
 
 # ------------------------------------------------------------
 # Soft skills
 # ------------------------------------------------------------
 
-df["soft_skill_score"] = (
-    df["communication_skill_score"]
-    + df["mock_interview_score"]
-) / 2
+df["soft_skill_score"] = (df["communication_skill_score"] + df["mock_interview_score"]) / 2
 
 
 # ------------------------------------------------------------
@@ -158,17 +136,11 @@ df["soft_skill_score"] = (
 
 df["cgpa_percentage"] = df["cgpa"] * 10
 
-df["academic_score"] = (
-    df["cgpa_percentage"]
-    + df["attendance_percentage"]
-) / 2
+df["academic_score"] = (df["cgpa_percentage"] + df["attendance_percentage"]) / 2
 
 df["backlog_penalty"] = df["backlogs"] * 10
 
-df["adjusted_academic_score"] = (
-    df["academic_score"]
-    - df["backlog_penalty"]
-)
+df["adjusted_academic_score"] = df["academic_score"] - df["backlog_penalty"]
 
 
 # ------------------------------------------------------------
@@ -180,23 +152,16 @@ linkedin_max = df["linkedin_connections"].max()
 
 # Avoid division by zero
 if github_max > 0:
-    df["github_normalized"] = (
-        df["github_repos"] / github_max
-    )
+    df["github_normalized"] = df["github_repos"] / github_max
 else:
     df["github_normalized"] = 0
 
 if linkedin_max > 0:
-    df["linkedin_normalized"] = (
-        df["linkedin_connections"] / linkedin_max
-    )
+    df["linkedin_normalized"] = df["linkedin_connections"] / linkedin_max
 else:
     df["linkedin_normalized"] = 0
 
-df["professional_presence_score"] = (
-    df["github_normalized"]
-    + df["linkedin_normalized"]
-) / 2
+df["professional_presence_score"] = (df["github_normalized"] + df["linkedin_normalized"]) / 2
 
 
 # ------------------------------------------------------------
@@ -204,9 +169,7 @@ df["professional_presence_score"] = (
 # ------------------------------------------------------------
 
 df["achievement_score"] = (
-    df["certifications_count"]
-    + df["hackathons_participated"]
-    + (df["extracurricular_score"] / 20)
+    df["certifications_count"] + df["hackathons_participated"] + (df["extracurricular_score"] / 20)
 )
 
 
@@ -214,30 +177,21 @@ df["achievement_score"] = (
 # Leadership
 # ------------------------------------------------------------
 
-df["leadership_profile_score"] = (
-    df["leadership_score"]
-    + df["extracurricular_score"]
-) / 2
+df["leadership_profile_score"] = (df["leadership_score"] + df["extracurricular_score"]) / 2
 
 
 # ------------------------------------------------------------
 # Volunteer experience
 # ------------------------------------------------------------
 
-df["volunteer_binary"] = df["volunteer_experience"].map({
-    "No": 0,
-    "Yes": 1
-})
+df["volunteer_binary"] = df["volunteer_experience"].map({"No": 0, "Yes": 1})
 
 
 # ------------------------------------------------------------
 # Study / sleep relationship
 # ------------------------------------------------------------
 
-df["study_sleep_ratio"] = (
-    df["study_hours_per_day"]
-    / (df["sleep_hours"] + 0.1)
-)
+df["study_sleep_ratio"] = df["study_hours_per_day"] / (df["sleep_hours"] + 0.1)
 
 
 # ------------------------------------------------------------
@@ -308,18 +262,9 @@ y = df["placement_target"]
 # 8. IDENTIFY FEATURE TYPES
 # ============================================================
 
-categorical_features = [
-    "gender",
-    "branch",
-    "college_tier",
-    "volunteer_experience"
-]
+categorical_features = ["gender", "branch", "college_tier", "volunteer_experience"]
 
-numerical_features = [
-    column
-    for column in X.columns
-    if column not in categorical_features
-]
+numerical_features = [column for column in X.columns if column not in categorical_features]
 
 
 print("\n" + "=" * 60)
@@ -339,29 +284,17 @@ print("TRAIN / TEST SPLIT")
 print("=" * 60)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.20,
-    random_state=42,
-    stratify=y
+    X, y, test_size=0.20, random_state=42, stratify=y
 )
 
 print("Training samples:", len(X_train))
 print("Testing samples:", len(X_test))
 
 print("\nTraining distribution:")
-print(
-    y_train.value_counts(normalize=True)
-    .mul(100)
-    .round(2)
-)
+print(y_train.value_counts(normalize=True).mul(100).round(2))
 
 print("\nTesting distribution:")
-print(
-    y_test.value_counts(normalize=True)
-    .mul(100)
-    .round(2)
-)
+print(y_test.value_counts(normalize=True).mul(100).round(2))
 
 
 # ============================================================
@@ -378,16 +311,7 @@ print("=" * 60)
 # 2. Standardize numerical features
 
 numerical_pipeline = Pipeline(
-    steps=[
-        (
-            "imputer",
-            SimpleImputer(strategy="median")
-        ),
-        (
-            "scaler",
-            StandardScaler()
-        )
-    ]
+    steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]
 )
 
 
@@ -397,33 +321,16 @@ numerical_pipeline = Pipeline(
 
 categorical_pipeline = Pipeline(
     steps=[
-        (
-            "imputer",
-            SimpleImputer(strategy="most_frequent")
-        ),
-        (
-            "encoder",
-            OneHotEncoder(
-                handle_unknown="ignore",
-                sparse_output=False
-            )
-        )
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
     ]
 )
 
 
 preprocessor = ColumnTransformer(
     transformers=[
-        (
-            "numerical",
-            numerical_pipeline,
-            numerical_features
-        ),
-        (
-            "categorical",
-            categorical_pipeline,
-            categorical_features
-        )
+        ("numerical", numerical_pipeline, numerical_features),
+        ("categorical", categorical_pipeline, categorical_features),
     ]
 )
 
@@ -463,41 +370,24 @@ print("\n" + "=" * 60)
 print("CLASS IMBALANCE ANALYSIS")
 print("=" * 60)
 
-placed_percentage = (
-    y_train.mean() * 100
-)
+placed_percentage = y_train.mean() * 100
 
-not_placed_percentage = (
-    (1 - y_train.mean()) * 100
-)
+not_placed_percentage = (1 - y_train.mean()) * 100
 
-print(
-    f"Placed: {placed_percentage:.2f}%"
-)
+print(f"Placed: {placed_percentage:.2f}%")
 
-print(
-    f"Not Placed: {not_placed_percentage:.2f}%"
-)
+print(f"Not Placed: {not_placed_percentage:.2f}%")
 
 
-difference = abs(
-    placed_percentage -
-    not_placed_percentage
-)
+difference = abs(placed_percentage - not_placed_percentage)
 
-print(
-    f"Difference between classes: {difference:.2f} percentage points"
-)
+print(f"Difference between classes: {difference:.2f} percentage points")
 
 
 if difference < 10:
-    print(
-        "\nConclusion: The dataset is relatively balanced."
-    )
+    print("\nConclusion: The dataset is relatively balanced.")
 else:
-    print(
-        "\nConclusion: The dataset has noticeable class imbalance."
-    )
+    print("\nConclusion: The dataset has noticeable class imbalance.")
 
 
 # ============================================================
@@ -508,18 +398,11 @@ print("\n" + "=" * 60)
 print("SMOTE EXPERIMENT")
 print("=" * 60)
 
-print(
-    "SMOTE is applied ONLY to the training data."
-)
+print("SMOTE is applied ONLY to the training data.")
 
-smote = SMOTE(
-    random_state=42
-)
+smote = SMOTE(random_state=42)
 
-X_train_smote, y_train_smote = smote.fit_resample(
-    X_train_processed,
-    y_train
-)
+X_train_smote, y_train_smote = smote.fit_resample(X_train_processed, y_train)
 
 
 print("\nBefore SMOTE:")
@@ -545,15 +428,9 @@ number_of_classes = len(class_counts)
 class_weights = {}
 
 for class_value, count in class_counts.items():
+    class_weights[class_value] = total_samples / (number_of_classes * count)
 
-    class_weights[class_value] = (
-        total_samples /
-        (number_of_classes * count)
-    )
-
-print(
-    "Recommended class weights:"
-)
+print("Recommended class weights:")
 
 print(class_weights)
 
@@ -564,10 +441,7 @@ print(class_weights)
 
 PREPROCESSOR_FILE = "preprocessor.pkl"
 
-joblib.dump(
-    preprocessor,
-    PREPROCESSOR_FILE
-)
+joblib.dump(preprocessor, PREPROCESSOR_FILE)
 
 print("\n" + "=" * 60)
 print("PREPROCESSOR SAVED")
@@ -580,39 +454,21 @@ print(PREPROCESSOR_FILE)
 # 16. SAVE PROCESSED DATA
 # ============================================================
 
-np.save(
-    "X_train_processed.npy",
-    X_train_processed
-)
+np.save("X_train_processed.npy", X_train_processed)
 
-np.save(
-    "X_test_processed.npy",
-    X_test_processed
-)
+np.save("X_test_processed.npy", X_test_processed)
 
-np.save(
-    "y_train.npy",
-    y_train.to_numpy()
-)
+np.save("y_train.npy", y_train.to_numpy())
 
-np.save(
-    "y_test.npy",
-    y_test.to_numpy()
-)
+np.save("y_test.npy", y_test.to_numpy())
 
 
 # SMOTE data is saved separately because it is
 # an experimental balanced training dataset.
 
-np.save(
-    "X_train_smote.npy",
-    X_train_smote
-)
+np.save("X_train_smote.npy", X_train_smote)
 
-np.save(
-    "y_train_smote.npy",
-    y_train_smote.to_numpy()
-)
+np.save("y_train_smote.npy", y_train_smote.to_numpy())
 
 
 print("\nProcessed datasets saved.")

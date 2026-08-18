@@ -1,6 +1,5 @@
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 
 # ============================================================
 # LOAD DATASET
@@ -29,10 +28,7 @@ df = df.drop(columns=["student_id"])
 # CREATE BINARY TARGET
 # ============================================================
 
-df["placement_target"] = df["placement_status"].map({
-    "Not Placed": 0,
-    "Placed": 1
-})
+df["placement_target"] = df["placement_status"].map({"Not Placed": 0, "Placed": 1})
 
 print("\n========== TARGET DISTRIBUTION ==========")
 print(df["placement_target"].value_counts())
@@ -43,18 +39,13 @@ print(df["placement_target"].value_counts())
 # ============================================================
 
 df["experience_score"] = (
-    df["internships_count"]
-    + df["projects_count"]
-    + df["hackathons_participated"]
+    df["internships_count"] + df["projects_count"] + df["hackathons_participated"]
 )
 
 
 # Internship + project interaction
 
-df["internship_project_score"] = (
-    df["internships_count"]
-    * df["projects_count"]
-)
+df["internship_project_score"] = df["internships_count"] * df["projects_count"]
 
 
 # ============================================================
@@ -66,7 +57,7 @@ skill_columns = [
     "aptitude_score",
     "communication_skill_score",
     "logical_reasoning_score",
-    "mock_interview_score"
+    "mock_interview_score",
 ]
 
 df["overall_skill_score"] = df[skill_columns].mean(axis=1)
@@ -74,18 +65,12 @@ df["overall_skill_score"] = df[skill_columns].mean(axis=1)
 
 # Technical skill
 
-df["technical_skill_score"] = (
-    df["coding_skill_score"]
-    + df["logical_reasoning_score"]
-) / 2
+df["technical_skill_score"] = (df["coding_skill_score"] + df["logical_reasoning_score"]) / 2
 
 
 # Soft skill
 
-df["soft_skill_score"] = (
-    df["communication_skill_score"]
-    + df["mock_interview_score"]
-) / 2
+df["soft_skill_score"] = (df["communication_skill_score"] + df["mock_interview_score"]) / 2
 
 
 # ============================================================
@@ -99,10 +84,7 @@ df["cgpa_percentage"] = df["cgpa"] * 10
 
 # Academic strength
 
-df["academic_score"] = (
-    df["cgpa_percentage"]
-    + df["attendance_percentage"]
-) / 2
+df["academic_score"] = (df["cgpa_percentage"] + df["attendance_percentage"]) / 2
 
 
 # Backlog penalty
@@ -112,10 +94,7 @@ df["backlog_penalty"] = df["backlogs"] * 10
 
 # Adjusted academic score
 
-df["adjusted_academic_score"] = (
-    df["academic_score"]
-    - df["backlog_penalty"]
-)
+df["adjusted_academic_score"] = df["academic_score"] - df["backlog_penalty"]
 
 
 # ============================================================
@@ -127,18 +106,11 @@ df["adjusted_academic_score"] = (
 github_max = df["github_repos"].max()
 linkedin_max = df["linkedin_connections"].max()
 
-df["github_normalized"] = (
-    df["github_repos"] / github_max
-)
+df["github_normalized"] = df["github_repos"] / github_max
 
-df["linkedin_normalized"] = (
-    df["linkedin_connections"] / linkedin_max
-)
+df["linkedin_normalized"] = df["linkedin_connections"] / linkedin_max
 
-df["professional_presence_score"] = (
-    df["github_normalized"]
-    + df["linkedin_normalized"]
-) / 2
+df["professional_presence_score"] = (df["github_normalized"] + df["linkedin_normalized"]) / 2
 
 
 # ============================================================
@@ -146,9 +118,7 @@ df["professional_presence_score"] = (
 # ============================================================
 
 df["achievement_score"] = (
-    df["certifications_count"]
-    + df["hackathons_participated"]
-    + (df["extracurricular_score"] / 20)
+    df["certifications_count"] + df["hackathons_participated"] + (df["extracurricular_score"] / 20)
 )
 
 
@@ -156,18 +126,12 @@ df["achievement_score"] = (
 # LEADERSHIP / VOLUNTEER FEATURE
 # ============================================================
 
-df["leadership_profile_score"] = (
-    df["leadership_score"]
-    + df["extracurricular_score"]
-) / 2
+df["leadership_profile_score"] = (df["leadership_score"] + df["extracurricular_score"]) / 2
 
 
 # Convert volunteer experience to binary
 
-df["volunteer_binary"] = df["volunteer_experience"].map({
-    "No": 0,
-    "Yes": 1
-})
+df["volunteer_binary"] = df["volunteer_experience"].map({"No": 0, "Yes": 1})
 
 
 # ============================================================
@@ -176,20 +140,14 @@ df["volunteer_binary"] = df["volunteer_experience"].map({
 
 # Study-to-sleep ratio
 
-df["study_sleep_ratio"] = (
-    df["study_hours_per_day"]
-    / (df["sleep_hours"] + 0.1)
-)
+df["study_sleep_ratio"] = df["study_hours_per_day"] / (df["sleep_hours"] + 0.1)
 
 
 # ============================================================
 # SKILL × EXPERIENCE INTERACTION
 # ============================================================
 
-df["skill_experience_score"] = (
-    df["overall_skill_score"]
-    * (1 + df["experience_score"])
-)
+df["skill_experience_score"] = df["overall_skill_score"] * (1 + df["experience_score"])
 
 
 # ============================================================
@@ -278,10 +236,7 @@ print("\n========== CORRELATION WITH PLACEMENT TARGET ==========")
 numeric_df = df.select_dtypes(include=np.number)
 
 correlations = (
-    numeric_df
-    .corr()["placement_target"]
-    .drop("placement_target")
-    .sort_values(ascending=False)
+    numeric_df.corr()["placement_target"].drop("placement_target").sort_values(ascending=False)
 )
 
 print(correlations.round(4))

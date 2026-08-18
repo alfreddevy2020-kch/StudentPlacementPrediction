@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "model_name": "random_forest",
+  "model_version": "2026.08.18-rf.1",
+  "model_class": "RandomForestClassifier",
+  "created_at_utc": "2026-08-18T14:03:46Z",
+  "artifacts": {
+    "preprocessor": {
+      "filename": "preprocessor.joblib",
+      "sha256": "65982520aa4c9c0090d3764b6dd92cc6bf5098a29d3968e99f7020dce1a33aec"
+    },
+    "model": {
+      "filename": "model.joblib",
+      "sha256": "2b601973775b2dcee17607be1af27283c50d98c79201096ed1288cab8455e4a9"
+    }
+  }
+}

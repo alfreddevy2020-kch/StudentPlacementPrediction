@@ -15,7 +15,6 @@ Run after:
 
 from __future__ import annotations
 
-import os
 import warnings
 from pathlib import Path
 
@@ -26,7 +25,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import shap
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
@@ -106,9 +104,7 @@ def load_xgboost_model():
 def load_data():
     """Load processed train/test matrices and raw test rows for fairness groups."""
     if not TRAIN_PATH.exists() or not TEST_PATH.exists():
-        raise FileNotFoundError(
-            "Processed data not found. Run preprocessing.py first."
-        )
+        raise FileNotFoundError("Processed data not found. Run preprocessing.py first.")
 
     train_df = pd.read_csv(TRAIN_PATH)
     test_df = pd.read_csv(TEST_PATH)
@@ -121,9 +117,7 @@ def load_data():
     feature_names = list(train_df.drop(columns=[target]).columns)
 
     if not RAW_PATH.exists():
-        raise FileNotFoundError(
-            "Raw dataset not found. Run download_dataset.py first."
-        )
+        raise FileNotFoundError("Raw dataset not found. Run download_dataset.py first.")
 
     raw_df = pd.read_csv(RAW_PATH).drop(columns=["student_id", "salary_package_lpa"])
     X_raw = raw_df.drop(columns=["placement_status"])
@@ -236,9 +230,7 @@ def run_shap_analysis(model, X_test, y_test, feature_names):
     placed_idx = np.where(y_test == 1)[0]
     if len(placed_idx) > 0:
         # Student whose probability is closest to 0.75 (not trivially perfect)
-        candidate_idx = placed_idx[
-            np.argsort(np.abs(y_proba[placed_idx] - 0.75))
-        ][0]
+        candidate_idx = placed_idx[np.argsort(np.abs(y_proba[placed_idx] - 0.75))][0]
     else:
         candidate_idx = 0
 
@@ -340,7 +332,9 @@ def run_calibration(model, X_train, y_train, X_test, y_test):
 
     ax.set_xlabel("Mean Predicted Probability")
     ax.set_ylabel("Fraction of Positives (Actually Placed)")
-    ax.set_title("Calibration Curves — Before vs After\n(Lower Brier score = more trustworthy probabilities)")
+    ax.set_title(
+        "Calibration Curves — Before vs After\n(Lower Brier score = more trustworthy probabilities)"
+    )
     ax.legend(loc="lower right")
     ax.set_facecolor(PALETTE["light"])
     fig.patch.set_facecolor("white")
@@ -349,7 +343,9 @@ def run_calibration(model, X_train, y_train, X_test, y_test):
     plt.close()
     print("  Saved: explainability_results/calibration_before_after.png")
 
-    print(f"\n  Brier scores — Raw: {brier_raw:.6f} | Platt: {brier_sigmoid:.6f} | Isotonic: {brier_isotonic:.6f}")
+    print(
+        f"\n  Brier scores — Raw: {brier_raw:.6f} | Platt: {brier_sigmoid:.6f} | Isotonic: {brier_isotonic:.6f}"
+    )
     print(f"  Best method selected: {best_method}")
     return best_calibrated, cal_metrics
 
@@ -433,9 +429,7 @@ def run_fairness_audit(model, X_test, y_test, X_test_raw):
 def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     """Write a human-readable fairness + explainability report with mitigations."""
     gender_df = fairness_df[fairness_df["sensitive_attribute"] == "gender"]
-    extrac_df = fairness_df[
-        fairness_df["sensitive_attribute"] == "extracurricular_activities"
-    ]
+    extrac_df = fairness_df[fairness_df["sensitive_attribute"] == "extracurricular_activities"]
 
     gender_fnr_gap = (
         gender_df["false_negative_rate"].max() - gender_df["false_negative_rate"].min()
@@ -448,7 +442,6 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
         else 0.0
     )
 
-    best_cal = cal_metrics.loc[cal_metrics["selected"], "method"].iloc[0]
     top_shap = mean_abs_shap.head(5)
 
     lines = [
@@ -555,7 +548,7 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
 
     report_path = RESULTS_DIR / "fairness_report.txt"
     report_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\n  Saved: explainability_results/fairness_report.txt")
+    print("\n  Saved: explainability_results/fairness_report.txt")
 
 
 def main():
@@ -594,7 +587,7 @@ def main():
     print("\nGenerated artifacts:")
     for path in sorted(RESULTS_DIR.glob("*")):
         print(f"  explainability_results/{path.name}")
-    print(f"  models/calibrated_xgboost.joblib")
+    print("  models/calibrated_xgboost.joblib")
 
 
 if __name__ == "__main__":

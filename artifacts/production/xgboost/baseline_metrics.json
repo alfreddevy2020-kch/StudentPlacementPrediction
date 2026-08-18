@@ -1,0 +1,12 @@
+{
+  "model_name": "xgboost",
+  "model_version": "2026.08.18-xgb.1",
+  "evaluation_dataset": "ci_evaluation_v1",
+  "evaluation_sample_size": 1000,
+  "roc_auc": 0.9719,
+  "f1_score": 0.8722,
+  "recall": 0.9721,
+  "precision": 0.7909,
+  "mean_probability_placed": 0.2214,
+  "probability_standard_deviation": 0.4123
+}

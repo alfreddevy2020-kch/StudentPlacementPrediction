@@ -1,0 +1,12 @@
+{
+  "model_name": "random_forest",
+  "model_version": "2026.08.18-rf.1",
+  "evaluation_dataset": "ci_evaluation_v1",
+  "evaluation_sample_size": 1000,
+  "roc_auc": 1.0,
+  "f1_score": 1.0,
+  "recall": 1.0,
+  "precision": 1.0,
+  "mean_probability_placed": 0.2,
+  "probability_standard_deviation": 0.3506
+}

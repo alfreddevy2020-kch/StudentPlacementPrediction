@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "model_name": "xgboost",
+  "model_version": "2026.08.18-xgb.1",
+  "model_class": "XGBClassifier",
+  "created_at_utc": "2026-08-18T14:04:01Z",
+  "artifacts": {
+    "preprocessor": {
+      "filename": "preprocessor.joblib",
+      "sha256": "e00cf15fc716e958c0f4e5770089ba0d20ee15d8c9396d25976550a2e6ad7112"
+    },
+    "model": {
+      "filename": "model.joblib",
+      "sha256": "dd3b3a6e0c4ba5ff03d023cac2a58bd1334e8acb5c310ce9155b81e04eff8214"
+    }
+  }
+}

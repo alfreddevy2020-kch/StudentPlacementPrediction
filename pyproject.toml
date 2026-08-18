@@ -1,0 +1,41 @@
+[project]
+name = "student-placement-prediction"
+version = "1.0.0"
+description = "Machine learning system for student placement prediction"
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes
+    "I",     # isort (import sorting)
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (formatting handles line wrapping)
+    "B008",  # do not perform function calls in argument defaults (FastAPI Query/Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
