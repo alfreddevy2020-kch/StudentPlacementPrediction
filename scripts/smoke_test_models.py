@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 # Force UTF-8 output on Windows (avoids cp1252 encoding errors with arrow chars)
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 # Ensure repo root is on PYTHONPATH

@@ -17,7 +17,7 @@ from api.config import MODEL_BUNDLES
 # Detect whether production artifacts exist
 _ARTIFACTS_AVAILABLE = all(bundle["model"].exists() for bundle in MODEL_BUNDLES.values())
 
-# Only import/create app if needed (avoids startup errors when not testing API)
+app = None
 try:
     from api.main import app
 

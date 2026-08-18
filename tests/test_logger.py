@@ -105,8 +105,8 @@ class TestPredictionLogger:
 
     def test_log_never_raises_on_invalid(self, tmp_logger: PredictionLogger):
         """log() must silently swallow errors, never raise to caller."""
-        # Corrupt the db path after init to provoke an error
         tmp_logger._db_path = Path("/nonexistent/path/db.sqlite")
-        tmp_logger._local = type("obj", (object,), {"conn": None})()
+        if hasattr(tmp_logger._local, "conn"):
+            tmp_logger._local.conn = None
         # Should not raise
         tmp_logger.log(VALID_INPUT, VALID_RESPONSE)
