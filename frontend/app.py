@@ -13,6 +13,7 @@ Prerequisites:
 """
 
 import io
+import os
 import re
 
 import pdfplumber
@@ -20,12 +21,30 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 import pandas as pd
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-BACKEND_URL = "http://localhost:8000/api/v1/predict"
+BACKEND_URL = os.getenv(
+    "BACKEND_URL",
+    "http://localhost:8000/api/v1/predict",
+)
+
+
+def get_available_models() -> list[str]:
+    """Fetch available models from the backend, falling back to defaults if unreachable."""
+    try:
+        models_url = BACKEND_URL.rsplit("/", 1)[0] + "/models"
+        resp = requests.get(models_url, timeout=3)
+        if resp.status_code == 200:
+            models = resp.json().get("available_models", [])
+            if models:
+                return models
+    except Exception:
+        pass
+    return ["random_forest", "logistic_regression", "xgboost"]
 
 # ---------------------------------------------------------------------------
 # Page Configuration
@@ -191,16 +210,17 @@ def render_sidebar() -> tuple[dict, object]:
 
     # -- Prediction Model ---------------------------------------------------
     st.sidebar.header("Prediction Model")
+    available_models = get_available_models()
     prediction_model = st.sidebar.selectbox(
         "Prediction Model",
         key="prediction_model",
-        options=["random_forest", "logistic_regression", "xgboost"],
+        options=available_models,
         index=0,
         format_func=lambda x: {
             "random_forest": "Random Forest",
             "logistic_regression": "Logistic Regression",
             "xgboost": "XGBoost",
-        }[x],
+        }.get(x, x.replace("_", " ").title()),
         help="Select which trained ML model to use for prediction",
     )
 
@@ -285,7 +305,7 @@ def render_sidebar() -> tuple[dict, object]:
     st.sidebar.header("Personal")
     gender = st.sidebar.selectbox(
         "Gender", key="gender",
-        options=["Male", "Female", "Other"], index=0,
+        options=["Male", "Female"], index=0,
     )
     extracurricular_activities = st.sidebar.selectbox(
         "Extracurricular Activities", key="extracurricular_activities",
@@ -323,26 +343,13 @@ def render_sidebar() -> tuple[dict, object]:
 
 def get_prediction(
     payload: dict, resume_file=None, resume_text: str = ""
-) -> dict | None:
+) -> Optional[dict]:
     """
     Send the student payload (and optional resume PDF + extracted text)
     to the FastAPI backend and return the JSON response.  Returns None
     if the request fails so the caller can handle the error gracefully.
     """
     try:
-        '''if resume_file is not None:
-            files = {
-                "resume": (resume_file.name, resume_file, "application/pdf")
-            }
-            data = {
-                "payload_json": pd.Series(payload).to_json(),
-                "resume_text": resume_text,
-            }
-            response = requests.post(
-                BACKEND_URL, data=data, files=files, timeout=10
-            )
-        else:
-            response = requests.post(BACKEND_URL, json=payload, timeout=10) '''
         response = requests.post(BACKEND_URL, json=payload, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -357,7 +364,11 @@ def get_prediction(
         st.error("The backend request timed out. Please try again.")
         return None
     except requests.exceptions.HTTPError as exc:
-        st.error(f"Backend returned an error: {exc}")
+        try:
+            err_detail = exc.response.json().get("detail", str(exc))
+            st.error(f"Backend error ({exc.response.status_code}): {err_detail}")
+        except Exception:
+            st.error(f"Backend returned an error: {exc}")
         return None
     except requests.exceptions.RequestException as exc:
         st.error(f"Unexpected request error: {exc}")

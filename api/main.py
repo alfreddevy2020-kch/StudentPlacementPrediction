@@ -21,10 +21,7 @@ from api.config import (
     APP_DESCRIPTION,
     APP_TITLE,
     APP_VERSION,
-    LOGISTIC_REGRESSION_PATH,
-    PREPROCESSOR_PATH,
-    RANDOM_FOREST_PATH,
-    XGBOOST_PATH,
+    MODEL_BUNDLES,
 )
 from api.predictor import (
     BasePredictor,
@@ -32,12 +29,17 @@ from api.predictor import (
     RandomForestPredictor,
     XGBoostPredictor,
 )
-from api.schemas import HealthResponse, ModelName, PredictionResponse, StudentInput
+from api.schemas import HealthResponse, ModelsResponse, PredictionResponse, StudentInput
 
-# ── Predictor registry ──────────────────────────────────────────────────────
-# Loaded once at startup; shared across all requests.
+# ── Predictor mapping & registry ─────────────────────────────────────────────
+PREDICTOR_TYPES: dict[str, type[BasePredictor]] = {
+    "logistic_regression": LogisticRegressionPredictor,
+    "random_forest": RandomForestPredictor,
+    "xgboost": XGBoostPredictor,
+}
+
 _predictors: dict[str, BasePredictor] = {}
-_preprocessor_loaded: bool = False
+_model_errors: dict[str, str] = {}
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -45,33 +47,41 @@ _preprocessor_loaded: bool = False
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
-    Startup: deserialise preprocessor and all model artifacts.
+    Startup: deserialise and validate each production model bundle.
     Shutdown: nothing to release (joblib objects are in-memory).
     """
-    global _preprocessor_loaded
+    global _predictors, _model_errors
+    _predictors.clear()
+    _model_errors.clear()
 
-    model_configs: list[tuple[str, type[BasePredictor], type]] = [
-        ("logistic_regression", LogisticRegressionPredictor, LOGISTIC_REGRESSION_PATH),
-        ("random_forest", RandomForestPredictor, RANDOM_FOREST_PATH),
-        ("xgboost", XGBoostPredictor, XGBOOST_PATH),
-    ]
+    print("[API] Initialising production model bundles ...")
 
-    for model_key, predictor_cls, model_path in model_configs:
+    for model_key, bundle in MODEL_BUNDLES.items():
+        predictor_cls = PREDICTOR_TYPES.get(model_key)
+        if not predictor_cls:
+            continue
+
         try:
-            predictor = predictor_cls.load(PREPROCESSOR_PATH, model_path)
+            predictor = predictor_cls.load(
+                preprocessor_path=bundle["preprocessor"],
+                model_path=bundle["model"],
+                manifest_path=bundle.get("manifest"),
+            )
             _predictors[model_key] = predictor
-            print(f"[API] [OK] {predictor.model_display_name} loaded: {model_path.name}")
-        except FileNotFoundError as exc:
-            print(f"[API] [FAIL] Artifact not found for {model_key}: {exc}")
+            print(f"[API] [OK] {predictor.model_display_name} loaded: {bundle['model'].name}")
         except Exception as exc:
-            print(f"[API] [FAIL] Unexpected error loading {model_key}: {exc}")
+            _model_errors[model_key] = str(exc)
+            print(f"[API] [FAIL] Error loading model '{model_key}': {exc}")
 
-    _preprocessor_loaded = PREPROCESSOR_PATH.exists()
+    loaded_count = len(_predictors)
+    total_count = len(MODEL_BUNDLES)
 
-    if _predictors:
-        print(f"[API] [OK] {len(_predictors)}/3 models loaded successfully.")
+    if loaded_count == total_count:
+        print(f"[API] [OK] All {loaded_count}/{total_count} models loaded successfully.")
+    elif loaded_count > 0:
+        print(f"[API] [WARN] Degraded state: {loaded_count}/{total_count} models loaded.")
     else:
-        print("[API] [FAIL] No models loaded. Server is in degraded state.")
+        print("[API] [FAIL] Unavailable state: 0 models loaded.")
 
     yield   # server is now running
 
@@ -109,22 +119,41 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     response_model=HealthResponse,
     summary="Health Check",
     description=(
-        "Liveness probe. Returns `status: healthy` when the preprocessor "
-        "and at least one model are loaded and ready to serve predictions."
+        "Liveness probe. Returns `status: healthy` when all three models "
+        "are loaded, `degraded` when 1-2 models are loaded, and `unavailable` when none are loaded."
     ),
     tags=["System"],
 )
 def health_check() -> HealthResponse:
     models_loaded = {
-        key: predictor is not None and predictor.is_ready
-        for key, predictor in _predictors.items()
+        key: (key in _predictors and _predictors[key].is_ready)
+        for key in MODEL_BUNDLES.keys()
     }
-    all_loaded = all(models_loaded.values()) and len(models_loaded) == 3
+    loaded_count = sum(models_loaded.values())
+
+    if loaded_count == len(MODEL_BUNDLES):
+        status_str = "healthy"
+    elif loaded_count > 0:
+        status_str = "degraded"
+    else:
+        status_str = "unavailable"
+
     return HealthResponse(
-        status="healthy" if all_loaded else "degraded",
-        preprocessor_loaded=_preprocessor_loaded,
+        status=status_str,
         models_loaded=models_loaded,
     )
+
+
+@app.get(
+    "/api/v1/models",
+    response_model=ModelsResponse,
+    summary="List Available Models",
+    description="Returns a list of all model identifiers currently loaded and available for prediction.",
+    tags=["System"],
+)
+def list_available_models() -> ModelsResponse:
+    available = [k for k, p in _predictors.items() if p.is_ready]
+    return ModelsResponse(available_models=available)
 
 
 @app.post(
@@ -152,27 +181,24 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
 
     1. Pydantic validates the 15 raw features + model selection.
     2. The selected predictor's `predict()` builds a one-row DataFrame
-       and applies the shared ColumnTransformer.
+       and applies its verified ColumnTransformer.
     3. The transformed array is passed to the chosen model's predict/predict_proba.
     4. The result is returned as a structured JSON response.
     """
     model_key = payload.model.value
+    predictor = _predictors.get(model_key)
 
-    if model_key not in _predictors or not _predictors[model_key].is_ready:
-        available = list(_predictors.keys())
+    if predictor is None or not predictor.is_ready:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                f"Model '{model_key}' is not available. "
-                f"Loaded models: {available}. "
-                "Check /health for details."
-            ),
+            detail=f"Model '{model_key}' is currently unavailable.",
         )
 
     try:
-        return _predictors[model_key].predict(payload)
+        return predictor.predict(payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inference failed: {type(exc).__name__}: {exc}",
         )
+

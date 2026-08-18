@@ -1,0 +1,12 @@
+{
+  "model_name": "logistic_regression",
+  "model_version": "2026.08.18-lr.1",
+  "evaluation_dataset": "ci_evaluation_v1",
+  "evaluation_sample_size": 1000,
+  "roc_auc": 0.9442,
+  "f1_score": 0.6839,
+  "recall": 0.8883,
+  "precision": 0.5559,
+  "mean_probability_placed": 0.3069,
+  "probability_standard_deviation": 0.3457
+}

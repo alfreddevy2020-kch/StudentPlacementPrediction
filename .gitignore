@@ -70,6 +70,12 @@ Thumbs.db
 *.h5
 *.keras
 
+# Allow production artifacts
+!artifacts/
+!artifacts/production/
+!artifacts/production/**/*.joblib
+!artifacts/production/**/*.json
+
 # ==============================
 # Processed / generated data
 # ==============================

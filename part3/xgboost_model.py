@@ -165,9 +165,11 @@ base_xgb = xgb.XGBClassifier(
     device=device,
     random_state=42,
     eval_metric="logloss",
-    use_label_encoder=False,
     n_jobs=1,
 )
+
+# If using GPU, run searches sequentially to prevent CUDA multiprocessing deadlocks
+search_n_jobs = 1 if device == "cuda" else -1
 
 random_search = RandomizedSearchCV(
     base_xgb,
@@ -175,13 +177,16 @@ random_search = RandomizedSearchCV(
     n_iter=100,
     cv=cv,
     scoring="f1",
-    n_jobs=-1,
+    n_jobs=search_n_jobs,
     verbose=1,
     random_state=42,
 )
 
 t0 = time.time()
-random_search.fit(X_train, y_train)
+with warnings.catch_warnings():
+    # Suppress device mismatch warnings during search
+    warnings.filterwarnings("ignore", category=UserWarning, module="xgboost.core")
+    random_search.fit(X_train, y_train)
 t1 = time.time()
 
 print(f"\n  Best params (random search): {random_search.best_params_}")
@@ -239,12 +244,15 @@ grid_search = GridSearchCV(
     fine_grid,
     cv=cv,
     scoring="f1",
-    n_jobs=-1,
+    n_jobs=search_n_jobs,
     verbose=1,
 )
 
 t0 = time.time()
-grid_search.fit(X_train, y_train)
+with warnings.catch_warnings():
+    # Suppress device mismatch warnings during search
+    warnings.filterwarnings("ignore", category=UserWarning, module="xgboost.core")
+    grid_search.fit(X_train, y_train)
 t1 = time.time()
 
 best_xgb = grid_search.best_estimator_
