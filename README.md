@@ -1,179 +1,146 @@
 # Student Placement Prediction
 
-A Machine Learning project that predicts whether a student is likely to be placed based on academic performance, technical skills, soft skills, internships, projects, work experience, certifications, attendance and backlogs.
+A production-grade Machine Learning system that predicts whether a student is likely to be placed, based on academic performance, technical skills, soft skills, internships, projects, work experience, certifications, attendance, and backlogs.
+
+[![CI](https://github.com/<your-org>/StudentPlacementPrediction/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-org>/StudentPlacementPrediction/actions/workflows/ci.yml)
+
+---
 
 ## 📌 Project Overview
 
-Student placement depends on several academic and professional factors. This project uses Machine Learning to analyze student-related features and predict their placement status.
+The system follows a complete end-to-end Machine Learning lifecycle:
 
-The system follows a complete Machine Learning pipeline:
+```
+Raw Dataset → EDA → Visualisation → Preprocessing
+    → Model Training (LR · RF · XGBoost)
+    → Explainability & Fairness (SHAP)
+    → Artifact Packaging → REST API → Streamlit Dashboard
+    → CI/CD (GitHub Actions) → Cloud Deployment (Render · Streamlit Cloud)
+    → Prediction Logging (SQLite) → Drift Monitoring (PSI)
+```
 
-Raw Dataset → Data Analysis → Visualization → Preprocessing → Model Training → Evaluation → Prediction
+---
 
 ## 🎯 Objective
 
-The main objective of this project is to build a machine learning model that can predict:
+Build a machine learning system that predicts:
 
 - `0` → Not Placed
 - `1` → Placed
 
-The model can help identify students who may require additional training or placement preparation.
+The system helps placement cells identify students who need additional preparation, and provides explainable, auditable predictions.
 
 ---
 
 ## 📊 Dataset
 
-The dataset contains **5,000 student records** and initially contains 18 columns.
+The dataset contains **5,000 student records** with 18 columns.
 
-### Features
+### Features Used (15 input features)
 
-| Feature | Description |
-|---|---|
-| gender | Student gender |
-| ssc_percentage | Secondary school percentage |
-| hsc_percentage | Higher secondary percentage |
-| degree_percentage | Degree percentage |
-| cgpa | College CGPA |
-| entrance_exam_score | Entrance examination score |
-| technical_skill_score | Technical skill assessment score |
-| soft_skill_score | Soft skill assessment score |
-| internship_count | Number of internships |
-| live_projects | Number of live projects |
-| work_experience_months | Previous work experience |
-| certifications | Number of certifications |
-| attendance_percentage | Attendance percentage |
-| backlogs | Number of academic backlogs |
-| extracurricular_activities | Participation in extracurricular activities |
-| placement_status | Placement outcome |
+| Feature | Type | Description |
+|---|---|---|
+| `gender` | Categorical | Student gender |
+| `ssc_percentage` | Numerical | Secondary school (10th) percentage |
+| `hsc_percentage` | Numerical | Higher secondary (12th) percentage |
+| `degree_percentage` | Numerical | Undergraduate degree percentage |
+| `cgpa` | Numerical | College CGPA (0–10 scale) |
+| `attendance_percentage` | Numerical | College attendance percentage |
+| `backlogs` | Numerical | Number of active academic backlogs |
+| `entrance_exam_score` | Numerical | Entrance examination score |
+| `technical_skill_score` | Numerical | Technical / coding assessment score |
+| `soft_skill_score` | Numerical | Soft skills assessment score |
+| `certifications` | Numerical | Number of professional certifications |
+| `live_projects` | Numerical | Number of capstone/live projects |
+| `internship_count` | Numerical | Number of internships completed |
+| `work_experience_months` | Numerical | Prior work experience in months |
+| `extracurricular_activities` | Categorical | Participation in extracurricular activities |
 
 ### Removed Columns
 
-The following columns were removed during preprocessing:
+| Column | Reason |
+|---|---|
+| `student_id` | Identifier only — no predictive value |
+| `salary_package_lpa` | Known only after placement → data leakage |
 
-- `student_id` — identifier only
-- `salary_package_lpa` — removed to prevent data leakage because salary is known after placement
+### Class Distribution
 
----
+| Class | Count | Percentage |
+|---|---|---|
+| Not Placed | 4,134 | 82.68 % |
+| Placed | 866 | 17.32 % |
 
-## 🔎 Exploratory Data Analysis
-
-The dataset was analyzed for:
-
-- Missing values
-- Duplicate records
-- Unique values
-- Statistical distributions
-- Placement distribution
-- Feature averages by placement status
-- Gender vs placement
-- Extracurricular activities vs placement
-- Feature correlations
-
-### Data Quality
-
-- Total records: **5,000**
-- Missing values: **0**
-- Duplicate rows: **0**
-
-### Placement Distribution
-
-- Not Placed: **4,134 (82.68%)**
-- Placed: **866 (17.32%)**
-
-The target variable is therefore imbalanced.
+The target is **imbalanced** — all models use `scale_pos_weight` / class weighting and are evaluated on F1/PR-AUC, not accuracy.
 
 ---
 
-## 📈 Data Visualization
+## 🗂️ Repository Structure
 
-The project generates visualizations for important relationships between features and placement status.
-
-Examples include:
-
-- Placement distribution
-- CGPA vs placement
-- Technical skills vs placement
-- Soft skills vs placement
-- Backlogs vs placement
-- Internships vs placement
-- Live projects vs placement
-- Work experience vs placement
-- Attendance vs placement
-- Gender vs placement
-- Extracurricular activities vs placement
-- Correlation heatmap
-
-All generated visualizations are stored in:
-
-```text
-visualizations/
+```
+StudentPlacementPrediction/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  ← GitHub Actions CI pipeline
+│
+├── api/                            ← FastAPI prediction service
+│   ├── config.py                   ← artifact registry & app metadata
+│   ├── drift.py                    ← PSI drift detector
+│   ├── logger.py                   ← SQLite prediction logger
+│   ├── main.py                     ← FastAPI app + endpoints
+│   ├── predictor.py                ← model loader/predictor classes
+│   └── schemas.py                  ← Pydantic request/response schemas
+│
+├── artifacts/
+│   └── production/                 ← ✅ committed — reviewed model bundles
+│       ├── logistic_regression/    (model.joblib · preprocessor.joblib · manifest.json · baseline_metrics.json)
+│       ├── random_forest/          (model.joblib · preprocessor.joblib · manifest.json · baseline_metrics.json)
+│       └── xgboost/                (model.joblib · preprocessor.joblib · manifest.json · baseline_metrics.json)
+│
+├── docs/
+│   └── DEPLOYMENT.md               ← deployment guide & retraining policy
+│
+├── frontend/
+│   └── app.py                      ← Streamlit dashboard
+│
+├── logs/
+│   └── .gitkeep                    ← predictions.db written here at runtime (gitignored)
+│
+├── part2/                          ← Logistic Regression & Random Forest training
+├── part3/                          ← XGBoost training
+├── part4/                          ← SHAP explainability & fairness audit
+│
+├── scripts/
+│   ├── package_model.py            ← packages a model into artifacts/production/
+│   └── smoke_test_models.py        ← CI model health check
+│
+├── tests/
+│   ├── test_schemas.py             ← Pydantic validation tests
+│   ├── test_drift.py               ← PSI logic tests
+│   ├── test_logger.py              ← SQLite logger tests
+│   └── test_api.py                 ← FastAPI integration tests
+│
+├── .streamlit/
+│   └── secrets.toml                ← BACKEND_URL (gitignored)
+│
+├── render.yaml                     ← Render free-tier deployment blueprint
+├── requirements.txt                ← full dependencies
+├── requirements-ci.txt             ← minimal CI dependencies (CPU-only)
+└── SETUP.md                        ← detailed local setup guide
 ```
 
 ---
 
 ## 🤖 Part 2 — Model Training (Logistic Regression + Random Forest)
 
-> **Role:** Model Lead 1 — builds, tunes, and evaluates two ML classifiers with full interpretability analysis.
-
-All Part 2 files live in the `part2/` folder.
+All Part 2 files live in `part2/`.
 
 ### Quick Start
 
 ```bash
-# 1. Create a virtual environment (one-time setup)
 python -m venv venv
-
-# 2. Install dependencies
 venv\Scripts\python.exe -m pip install -r requirements.txt
-
-# 3. Run the full pipeline (downloads data → preprocesses → trains → evaluates)
-part2\run_pipeline.bat
+part2\run_pipeline.bat      # downloads data → preprocesses → trains → evaluates
 ```
-
-> **Windows only:** Double-click `part2\run_pipeline.bat` to run the entire pipeline end-to-end. It automatically anchors to the repo root so all paths resolve correctly.
-
-### Part 2 Scripts
-
-| Script | Description |
-|---|---|
-| `part2/logistic_regression_model.py` | L2 (Ridge) + L1 (Lasso) Logistic Regression with GridSearchCV, 500-iteration bootstrap confidence intervals, threshold optimisation |
-| `part2/random_forest_model.py` | Random Forest with two-phase tuning (RandomizedSearchCV → GridSearchCV), MDI + Permutation + Drop-Column feature importance, OOB convergence, learning curves |
-| `part2/model_comparison.py` | Head-to-head comparison: overlaid ROC & Precision-Recall curves, calibration plot, threshold sweep, McNemar's statistical test |
-| `part2/model_summary_report.py` | Generates `model_report.txt` and a 4-panel executive summary figure ready for slides |
-| `part2/run_pipeline.bat` | One-click pipeline runner (Windows) |
-
-### Generated Outputs
-
-After running the pipeline, all outputs appear inside `part2/` (excluded from git — regenerate locally):
-
-```
-part2/
-├── models/
-│   ├── logistic_regression_best.joblib
-│   └── random_forest_best.joblib
-└── model_results/
-    ├── executive_summary.png              ← 4-panel slide-ready figure
-    ├── model_report.txt                   ← full text report with talking points
-    ├── logreg_coefficient_importance.png
-    ├── logreg_l1_vs_l2_coefficients.png
-    ├── logreg_bootstrap_ci.png
-    ├── logreg_regularization_tuning.png
-    ├── logreg_threshold_optimization.png
-    ├── rf_feature_importance_mdi.png
-    ├── rf_feature_importance_permutation.png
-    ├── rf_importance_comparison.png
-    ├── rf_drop_column_importance.png
-    ├── rf_oob_convergence.png
-    ├── rf_learning_curve.png
-    ├── comparison_roc_curves.png
-    ├── comparison_pr_curves.png
-    ├── comparison_calibration.png
-    ├── comparison_threshold_analysis.png
-    ├── comparison_metrics_table.png
-    └── mcnemar_test.csv
-```
-
-> `part2/models/` and `part2/model_results/` are listed in `.gitignore` — they are **not committed**. Run `part2\run_pipeline.bat` to regenerate them.
 
 ### Key Results
 
@@ -181,147 +148,286 @@ part2/
 |---|---|---|
 | ROC-AUC | 0.9354 | 1.0000 |
 | F1 Score (tuned threshold) | 0.6949 | 1.0000 |
-| Average Precision (PR) | 0.7718 | 1.0000 |
+| Avg Precision (PR-AUC) | 0.7718 | 1.0000 |
 | Brier Score | 0.1110 | 0.0042 |
-| McNemar's test p-value | — | < 0.0001 (significant) |
 | Optimal threshold | 0.773 | 0.173 |
 
-**Top predictive features** (Permutation Importance, RF):
-
-1. `backlogs` — strongest negative predictor
-2. `cgpa`
-3. `technical_skill_score`
-4. `soft_skill_score`
-
-### Techniques Used (Beyond Basic Implementation)
-
-| Technique | Purpose |
-|---|---|
-| L1 vs L2 regularisation comparison | Shows which features Lasso eliminates vs Ridge retains |
-| Bootstrap confidence intervals (500×) | Statistically validates which coefficients are robust |
-| 3 importance methods: MDI, Permutation, Drop-Column | Exposes MDI's high-cardinality bias; Permutation is the honest metric |
-| OOB convergence plot | Proves `n_estimators=500` was chosen empirically |
-| Learning curves | Diagnoses bias-variance tradeoff |
-| Precision-Recall curves | Correct evaluation for an 82/18 imbalanced dataset |
-| Calibration plot (reliability diagram) | Verifies predicted probabilities are trustworthy |
-| Threshold optimisation | Tunes decision boundary for F1 — 0.5 is never optimal on imbalanced data |
-| McNemar's statistical test | Formally proves model differences are not due to chance |
+**Top predictive features (Permutation Importance, RF):** `backlogs` · `cgpa` · `technical_skill_score` · `soft_skill_score`
 
 ---
 
-## 🔍 Part 4 — Explainability & Bias/Fairness
+## ⚡ Part 3 — XGBoost Model
 
-> **Role:** Explainability & Fairness Lead — SHAP explanations, probability calibration, and demographic fairness audit on the XGBoost model.
-
-All Part 4 files live in the `part4/` folder.
+All Part 3 files live in `part3/`.
 
 ### Quick Start
 
 ```bash
-# Prerequisites: dataset, preprocessing, Part 3 XGBoost model
+python part3/xgboost_model.py
+# or
+part3\run_pipeline.bat
+```
+
+XGBoost is trained with CUDA GPU acceleration (falls back to CPU automatically). `scale_pos_weight` handles class imbalance. Hyperparameter tuning uses `RandomizedSearchCV` → `GridSearchCV`.
+
+---
+
+## 🔍 Part 4 — Explainability & Fairness
+
+All Part 4 files live in `part4/`.
+
+### Quick Start
+
+```bash
 python download_dataset.py
 python preprocessing.py
 python part3/xgboost_model.py
-
-# Run Part 4 pipeline
 part4\run_pipeline.bat
 ```
-
-### Part 4 Scripts
-
-| Script | Description |
-|---|---|
-| `part4/explainability_fairness.py` | SHAP analysis, Platt/isotonic calibration, fairness audit, mitigation report |
-| `part4/run_pipeline.bat` | One-click pipeline runner (Windows) |
-
-### Generated Outputs
-
-After running the pipeline, outputs appear inside `part4/` (excluded from git — regenerate locally):
-
-```
-part4/
-├── models/
-│   └── calibrated_xgboost.joblib
-└── explainability_results/
-    ├── shap_summary_plot.png
-    ├── shap_bar_plot.png
-    ├── shap_waterfall_sample.png
-    ├── shap_values_test.csv
-    ├── shap_global_importance.csv
-    ├── calibration_before_after.png
-    ├── calibration_metrics.csv
-    ├── fairness_group_metrics.csv
-    ├── fairness_fnr_by_group.png
-    └── fairness_report.txt
-```
-
-### Key Deliverables
 
 | Technique | Purpose |
 |---|---|
 | SHAP TreeExplainer | Local + global explanations — why THIS student got their score |
 | Platt scaling / Isotonic regression | Calibrate raw XGBoost scores into trustworthy probabilities |
-| Group-wise FNR audit | Compare false negative rates across gender and extracurricular groups |
-| Mitigation report | Proposed fixes if disparity detected (threshold tuning, monitoring) |
-
-See `part4/work.md` for full documentation and presentation talking points.
+| Group-wise FNR audit | Compare false negative rates across gender & extracurricular groups |
+| Mitigation report | Proposed fixes if disparity detected |
 
 ---
 
-# 🚀 Part 6 — Model Serving & Application Integration
+## 🚀 Part 6 — REST API (FastAPI)
 
-> **Role:** Backend / API Developer — integrates the trained ML model with
-> a FastAPI prediction service and Streamlit frontend.
+### Architecture
 
-## Overview
-
-The trained machine learning model is exposed through a REST API so that
-the frontend can send student information and receive a placement
-prediction.
-
-The application follows this architecture:
-
-```text
+```
 Streamlit Frontend
-        │
-        │ POST /api/v1/predict
-        │ JSON
-        ▼
-FastAPI Prediction API
-        │
-        ▼
-Pydantic Input Validation
-        │
-        ▼
-Raw Student Data
-        │
-        ▼
-preprocessor.joblib
-        │
-        ├── StandardScaler
-        │
-        └── OneHotEncoder
-        │
-        ▼
-17 Processed Features
-        │
-        ▼
-Random Forest Classifier
-        │
-        ▼
-Prediction + Probabilities
-        │
-        ▼
-FastAPI JSON Response
-        │
-        ▼
-Streamlit Dashboard
+      │ POST /api/v1/predict (JSON)
+      ▼
+FastAPI  ─── Pydantic validation
+      │
+      ▼
+ColumnTransformer (StandardScaler + OneHotEncoder)
+      │
+      ▼
+Classifier (LR / RF / XGBoost — selectable per request)
+      │
+      ▼
+JSON response  +  SQLite prediction log
+```
 
-## 🔄 Model Serving
+### Running Locally
 
-The API is designed with a modular predictor architecture so that the trained model can be replaced without changing the frontend request/response contract.
+```bash
+# Terminal 1 — API
+venv\Scripts\python.exe -m uvicorn api.main:app --reload --port 8000
 
-Current production model:
-- XGBoost / Random Forest — update once the final model is selected.
+# Terminal 2 — Dashboard
+venv\Scripts\streamlit run frontend\app.py
+```
 
-The preprocessing artifact and trained model artifact are loaded independently during API startup.
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness probe — confirms all 3 models are loaded |
+| `GET` | `/api/v1/models` | List available model identifiers |
+| `POST` | `/api/v1/predict` | Predict placement (body: 15 features + model choice) |
+| `GET` | `/api/v1/drift` | PSI drift report for a model (`?model=xgboost&window=200`) |
+| `GET` | `/logs/summary` | Total prediction counts per model |
+
+Interactive docs: http://localhost:8000/docs
+
+### Selecting a Model
+
+Every prediction request includes a `model` field:
+
+```json
+{
+  "model": "xgboost",       // "logistic_regression" | "random_forest" | "xgboost"
+  "cgpa": 8.2,
+  "ssc_percentage": 75.5,
+  ...
+}
+```
+
+All three models are loaded at startup and served from the same API.
+
+---
+
+## 📦 Artifact Packaging
+
+Production artifacts live in `artifacts/production/` and are **committed to git** (allowed by `.gitignore` negation rules). Each model bundle contains:
+
+```
+artifacts/production/<model_name>/
+├── model.joblib          ← trained classifier
+├── preprocessor.joblib   ← fitted ColumnTransformer
+├── manifest.json         ← training metadata (date, features, params)
+└── baseline_metrics.json ← F1, ROC-AUC, mean probability (used by drift checker)
+```
+
+To package a newly trained model:
+
+```bash
+python scripts/package_model.py \
+    --model part3/models/xgboost_best.joblib \
+    --preprocessor part3/models/preprocessor.joblib \
+    --output-dir artifacts/production/xgboost \
+    --overwrite
+```
+
+---
+
+## 🔄 CI/CD — GitHub Actions
+
+Every push and pull request to `main` triggers the CI pipeline defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Step | Tool | Blocks merge? |
+|---|---|:---:|
+| Lint | `ruff check .` | ✅ Yes |
+| Type check | `pyright` | ⚠️ Advisory |
+| Unit tests | `pytest tests/` | ✅ Yes |
+| Model smoke test | `python scripts/smoke_test_models.py` | ✅ Yes |
+
+The smoke test loads all three production `.joblib` bundles and runs a sample prediction through each. **A broken model artifact cannot be merged.**
+
+### Running Tests Locally
+
+```bash
+# Install test dependencies (first time)
+pip install pytest httpx pytest-asyncio ruff
+
+# Run unit tests (no artifacts needed)
+pytest tests/test_schemas.py tests/test_drift.py tests/test_logger.py -v
+
+# Run full integration tests (requires artifacts/production/)
+pytest tests/ -v
+
+# Model smoke test
+python scripts/smoke_test_models.py
+```
+
+---
+
+## 📊 Prediction Logging & Drift Monitoring
+
+### Prediction Logging
+
+Every successful prediction is recorded in `logs/predictions.db` (SQLite, WAL mode, thread-safe).
+
+```bash
+# Check log counts
+curl http://localhost:8000/logs/summary
+# → {"total": 42, "by_model": {"xgboost": 30, "random_forest": 10, "logistic_regression": 2}}
+```
+
+### Drift Detection (PSI)
+
+```bash
+curl "http://localhost:8000/api/v1/drift?model=xgboost&window=200"
+# → {"status": "ok", "psi": 0.042, "mean_shift": 0.018, ...}
+```
+
+| Status | Condition | Action |
+|---|---|---|
+| `ok` | PSI < 0.10, shift < 0.05 | None |
+| `warn` | PSI 0.10–0.20 or shift 0.05–0.10 | Monitor closely |
+| `alert` | PSI > 0.20 or shift > 0.10 | Initiate retraining review |
+| `insufficient_data` | < 20 predictions logged | Accumulate more traffic |
+
+---
+
+## ☁️ Cloud Deployment
+
+### Backend API — Render (Free Tier, $0/month)
+
+1. Push this repo to GitHub (artifacts must be committed).
+2. Go to [render.com](https://render.com) → **New → Blueprint**.
+3. Connect your GitHub repo — Render auto-detects `render.yaml`.
+4. The API will be live at `https://student-placement-api.onrender.com`.
+
+> Free tier sleeps after 15 min of inactivity (~30 s cold start). See `docs/DEPLOYMENT.md` for upgrade options.
+
+### Frontend Dashboard — Streamlit Community Cloud (Free Tier, $0/month)
+
+1. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**.
+2. Connect your GitHub repo, set main file to `frontend/app.py`.
+3. Under **Secrets**, add:
+   ```toml
+   BACKEND_URL = "https://student-placement-api.onrender.com/api/v1/predict"
+   ```
+4. Click **Deploy**.
+
+Full deployment guide and retraining policy: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+
+---
+
+## 🔁 Retraining Policy
+
+| Trigger | Threshold |
+|---|---|
+| Drift alert | PSI > 0.20 OR mean shift > 0.10 for 3+ consecutive days |
+| F1 regression | F1 drops below 0.80 on held-out validation set |
+| Data volume | New labeled data > 20 % of original training set |
+| Calendar | Every academic semester (~6 months) |
+
+See `docs/DEPLOYMENT.md` for the full retraining procedure.
+
+---
+
+## 🛠️ Local Setup
+
+See **[SETUP.md](SETUP.md)** for detailed step-by-step setup instructions.
+
+**Quick start:**
+
+```bash
+# Clone & set up environment
+git clone <repo-url>
+cd StudentPlacementPrediction
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+# Download dataset
+python download_dataset.py
+
+# Start the API
+venv\Scripts\python.exe -m uvicorn api.main:app --reload --port 8000
+
+# Start the dashboard (new terminal)
+venv\Scripts\streamlit run frontend\app.py
+```
+
+---
+
+## 📋 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| ML Models | scikit-learn (LR, RF), XGBoost |
+| Explainability | SHAP |
+| API | FastAPI + Pydantic v2 + uvicorn |
+| Frontend | Streamlit + Plotly |
+| Prediction Logging | SQLite (WAL mode) |
+| Drift Detection | PSI (Population Stability Index) |
+| CI/CD | GitHub Actions |
+| Linting | ruff |
+| Type checking | pyright |
+| Testing | pytest + httpx |
+| Deployment (API) | Render free tier |
+| Deployment (UI) | Streamlit Community Cloud |
+
+---
+
+## 🔒 Data & Privacy
+
+The following are **never committed** to git:
+
+- Raw student data (`data/raw/`)
+- Processed datasets (`data/processed/`)
+- Student IDs or PII
+- API tokens or secrets (`.env`, `secrets.toml`)
+- Prediction logs (`logs/predictions.db`)
+- Experimental / unapproved model artifacts
+
+Only explicitly reviewed production artifacts in `artifacts/production/` are committed.
