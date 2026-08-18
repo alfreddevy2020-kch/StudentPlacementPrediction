@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import joblib
@@ -9,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from imblearn.over_sampling import SMOTE
+
 
 
 # ============================================================
@@ -559,67 +561,63 @@ print(class_weights)
 
 
 # ============================================================
-# 15. SAVE PREPROCESSOR
+# 15. SAVE PREPROCESSOR & PROCESSED CSV FILES
 # ============================================================
 
-PREPROCESSOR_FILE = "preprocessor.pkl"
+# Extract cleaned feature names
+feature_names = [
+    col.replace("numerical__", "").replace("categorical__", "")
+    for col in preprocessor.get_feature_names_out()
+]
 
-joblib.dump(
-    preprocessor,
-    PREPROCESSOR_FILE
+# Convert processed arrays to DataFrames
+X_train_df = pd.DataFrame(
+    X_train_processed,
+    columns=feature_names,
+    index=X_train.index
+).reset_index(drop=True)
+
+X_test_df = pd.DataFrame(
+    X_test_processed,
+    columns=feature_names,
+    index=X_test.index
+).reset_index(drop=True)
+
+train_processed = X_train_df.copy()
+train_processed["placement_status"] = y_train.reset_index(drop=True)
+
+test_processed = X_test_df.copy()
+test_processed["placement_status"] = y_test.reset_index(drop=True)
+
+# 1. Save processed CSVs
+os.makedirs("data/processed", exist_ok=True)
+train_processed.to_csv("data/processed/train_processed.csv", index=False)
+test_processed.to_csv("data/processed/test_processed.csv", index=False)
+
+# 2. Save class weights
+class_weights_df = pd.DataFrame(
+    {
+        "class": list(class_weights.keys()),
+        "weight": list(class_weights.values()),
+    }
 )
+class_weights_df.to_csv("data/processed/class_weights.csv", index=False)
+
+# 3. Save preprocessor
+os.makedirs("part2/models", exist_ok=True)
+joblib.dump(preprocessor, "part2/models/preprocessor.joblib")
 
 print("\n" + "=" * 60)
-print("PREPROCESSOR SAVED")
+print("PREPROCESSOR & CSV DATASETS SAVED")
 print("=" * 60)
-
-print(PREPROCESSOR_FILE)
-
-
-# ============================================================
-# 16. SAVE PROCESSED DATA
-# ============================================================
-
-np.save(
-    "X_train_processed.npy",
-    X_train_processed
-)
-
-np.save(
-    "X_test_processed.npy",
-    X_test_processed
-)
-
-np.save(
-    "y_train.npy",
-    y_train.to_numpy()
-)
-
-np.save(
-    "y_test.npy",
-    y_test.to_numpy()
-)
-
-
-# SMOTE data is saved separately because it is
-# an experimental balanced training dataset.
-
-np.save(
-    "X_train_smote.npy",
-    X_train_smote
-)
-
-np.save(
-    "y_train_smote.npy",
-    y_train_smote.to_numpy()
-)
-
-
-print("\nProcessed datasets saved.")
+print("data/processed/train_processed.csv")
+print("data/processed/test_processed.csv")
+print("data/processed/class_weights.csv")
+print("part2/models/preprocessor.joblib")
 
 
 # ============================================================
-# 17. TREND FEATURE DOCUMENTATION
+# 16. TREND FEATURE DOCUMENTATION
 # ============================================================
 
 print("\n" + "=" * 60)
@@ -658,27 +656,24 @@ features such as:
 
 
 # ============================================================
-# 18. FINAL SUMMARY
+# 17. FINAL SUMMARY
 # ============================================================
 
 print("\n" + "=" * 60)
 print("PREPROCESSING COMPLETE")
 print("=" * 60)
 
-print("Original rows:", 100000)
+print("Original rows:", len(df) + duplicate_count)
 print("Training rows:", len(X_train))
 print("Testing rows:", len(X_test))
 print("Numerical features:", len(numerical_features))
 print("Categorical features:", len(categorical_features))
+print("Processed feature columns:", len(feature_names))
 
 print("\nGenerated files:")
-
-print("preprocessor.pkl")
-print("X_train_processed.npy")
-print("X_test_processed.npy")
-print("y_train.npy")
-print("y_test.npy")
-print("X_train_smote.npy")
-print("y_train_smote.npy")
+print("- data/processed/train_processed.csv")
+print("- data/processed/test_processed.csv")
+print("- data/processed/class_weights.csv")
+print("- part2/models/preprocessor.joblib")
 
 print("\nNo model training performed.")
