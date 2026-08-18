@@ -153,26 +153,51 @@ class BatchPredictor:
 
         return result
 
-    def predict_probabilities(self, df: pd.DataFrame) -> np.ndarray:
+    def predict_probabilities(
+        self, df: pd.DataFrame, model_name: str | None = None
+    ) -> np.ndarray:
         """
         Returns placement probabilities for each row in the DataFrame.
         Result shape: (n_samples,) with values in [0.0, 1.0].
+
+        Parameters
+        ----------
+        model_name : str, optional
+            Explicitly select which loaded model to use for inference.
+            Falls back to ``self.active_model_name`` when *None*.
         """
         if not self._loaded:
             raise RuntimeError("BatchPredictor not loaded. Call load() first.")
 
+        model = self._models.get(
+            model_name or self._active_model_name
+        )
+        if model is None:
+            raise ValueError(
+                f"Model '{model_name}' not loaded. "
+                f"Available: {self.available_models}"
+            )
+
         features = self._prepare_features(df)
         X_transformed = self._preprocessor.transform(features)
-        probs = self.active_model.predict_proba(X_transformed)[:, 1]
+        probs = model.predict_proba(X_transformed)[:, 1]
         return probs
 
-    def predict_single(self, student_dict: dict) -> float:
+    def predict_single(
+        self, student_dict: dict, model_name: str | None = None
+    ) -> float:
         """
         Predict placement probability for a single student given as a dict.
         Returns a float in [0.0, 1.0].
+
+        Parameters
+        ----------
+        model_name : str, optional
+            Explicitly select which loaded model to use for inference.
+            Falls back to ``self.active_model_name`` when *None*.
         """
         df = pd.DataFrame([student_dict])
-        return float(self.predict_probabilities(df)[0])
+        return float(self.predict_probabilities(df, model_name=model_name)[0])
 
     @staticmethod
     def classify_risk(prob: float) -> str:

@@ -62,90 +62,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom Theme CSS Polish for subtle accents & badge styling
-st.markdown("""
-<style>
-    /* Metric Card Polish */
-    div[data-testid="stMetric"] {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        padding: 14px 18px;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: #60A5FA;
-        box-shadow: 0 4px 12px rgba(96, 165, 250, 0.08);
-    }
-    div[data-testid="stMetricLabel"] p {
-        font-size: 0.85rem !important;
-        font-weight: 600 !important;
-        color: #94A3B8 !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    div[data-testid="stMetricValue"] div {
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 1.75rem !important;
-        font-weight: 700 !important;
-        color: #F8FAFC !important;
-    }
-
-    /* Tab Polish */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        background-color: #0F172A;
-        padding: 4px;
-        border-radius: 8px;
-        border: 1px solid #334155;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 44px;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-weight: 600;
-        color: #94A3B8;
-        background-color: transparent;
-        border: none;
-        transition: all 0.15s ease;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #F8FAFC;
-        background-color: #1E293B;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #60A5FA !important;
-        background-color: #1E293B !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-
-    /* Header Title Badge */
-    .domain-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background-color: #1E293B;
-        border: 1px solid #3B82F6;
-        color: #93C5FD;
-        padding: 4px 12px;
-        border-radius: 9999px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+# NOTE: All visual styling is handled natively via .streamlit/config.toml
+# and st.container(border=True). No custom CSS injection needed.
 
 
 def get_plotly_layout(height: int = 320, title: Optional[str] = None) -> Dict[str, Any]:
     """Returns a unified executive dark Plotly layout aligned with the theme."""
-    return dict(
-        title=dict(
-            text=title,
-            font=dict(family="Inter, sans-serif", size=15, color="#F8FAFC"),
-        )
-        if title
-        else None,
+    layout = dict(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter, sans-serif", color="#CBD5E1", size=12),
@@ -173,6 +96,12 @@ def get_plotly_layout(height: int = 320, title: Optional[str] = None) -> Dict[st
             bgcolor="rgba(0,0,0,0)",
         ),
     )
+    if title:
+        layout["title"] = dict(
+            text=title,
+            font=dict(family="Inter, sans-serif", size=15, color="#F8FAFC"),
+        )
+    return layout
 
 
 # Risk tier color palette (shared across all charts)
@@ -327,65 +256,66 @@ except Exception as load_err:
 # =============================================================================
 with st.sidebar:
     st.markdown("### :material/school: CampusReady")
-    st.caption("Student Placement Readiness & Policy Simulator")
-    st.markdown("---")
+    st.caption("Student placement readiness & policy simulator")
+    st.space("small")
 
-    # Dataset Info
+    # Dataset info
     st.subheader(":material/dataset: Dataset")
     st.caption(f"**{len(raw_df):,}** students • **{len(raw_df.columns)}** features")
 
-    # Model Selector
-    st.markdown("---")
-    st.subheader(":material/psychology: Inference Engine")
+    # Model selector — stored per-session, never mutates the cached singleton
+    st.space("small")
+    st.subheader(":material/psychology: Inference engine")
     model_names = predictor.available_models
-    default_idx = (
-        model_names.index(predictor.active_model_name)
-        if predictor.active_model_name in model_names
-        else 0
-    )
+    st.session_state.setdefault("active_model", predictor.active_model_name)
     selected_model_name = st.selectbox(
-        "Active Model",
+        "Active model",
         options=model_names,
-        index=default_idx,
+        index=(
+            model_names.index(st.session_state["active_model"])
+            if st.session_state["active_model"] in model_names
+            else 0
+        ),
         help="Select classification model to drive all dashboard predictions.",
     )
-    predictor.active_model_name = selected_model_name
+    st.session_state["active_model"] = selected_model_name
 
-    # Cohort Filters
-    st.markdown("---")
-    st.subheader(":material/filter_alt: Cohort Filters")
+    # Cohort filters — pills for binary/ternary options
+    st.space("small")
+    st.subheader(":material/filter_alt: Cohort filters")
 
     # Gender filter
     gender_options = ["ALL"] + sorted(raw_df["gender"].dropna().unique().tolist())
-    selected_gender = st.selectbox("Filter by Gender", gender_options, index=0)
+    selected_gender = st.pills(
+        "Gender", gender_options, default="ALL", key="filter_gender"
+    )
 
     # Extracurricular filter
     extra_options = ["ALL"] + sorted(
         raw_df["extracurricular_activities"].dropna().unique().tolist()
     )
-    selected_extra = st.selectbox(
-        "Filter by Extracurriculars", extra_options, index=0
+    selected_extra = st.pills(
+        "Extracurriculars", extra_options, default="ALL", key="filter_extra"
     )
 
     # Apply filters
     filtered_df = raw_df.copy()
-    if selected_gender != "ALL":
+    if selected_gender and selected_gender != "ALL":
         filtered_df = filtered_df[filtered_df["gender"] == selected_gender]
-    if selected_extra != "ALL":
+    if selected_extra and selected_extra != "ALL":
         filtered_df = filtered_df[
             filtered_df["extracurricular_activities"] == selected_extra
         ]
 
-    st.caption(
-        f":material/groups: Active Cohort: **{len(filtered_df):,}** / {len(raw_df):,} students"
-    )
+    cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
+    st.caption(f":material/groups: Active cohort: **{cohort_ratio}** students")
 
-    # Resume Upload
-    st.markdown("---")
-    st.subheader(":material/upload_file: Resume Upload")
+    # Resume upload
+    st.space("small")
+    st.subheader(":material/upload_file: Resume upload")
     if HAS_PDFPLUMBER:
         resume_file = st.file_uploader(
-            "Upload Resume (PDF)",
+            "Upload resume (PDF)",
             type=["pdf"],
             help="Upload a student resume to auto-fill Tab 2 fields.",
         )
@@ -398,9 +328,12 @@ with st.sidebar:
                     if val is not None and key != "name":
                         st.session_state[f"diag_{key}"] = val
                 if parsed.get("name"):
-                    st.success(f"Parsed resume for **{parsed['name']}**")
+                    st.success(
+                        f"Parsed resume for **{parsed['name']}**",
+                        icon=":material/check_circle:",
+                    )
     else:
-        st.info("Install `pdfplumber` for resume auto-fill support.")
+        st.caption(":material/info: Install `pdfplumber` for resume auto-fill support.")
         resume_file = None
 
 
@@ -409,7 +342,9 @@ with st.sidebar:
 # =============================================================================
 if not filtered_df.empty:
     try:
-        cohort_probs = predictor.predict_probabilities(filtered_df)
+        cohort_probs = predictor.predict_probabilities(
+            filtered_df, model_name=st.session_state.get("active_model")
+        )
     except Exception as pred_err:
         st.warning(f":material/warning: Prediction error: {pred_err}")
         cohort_probs = np.full(len(filtered_df), 0.5)
@@ -427,21 +362,22 @@ if not filtered_df.empty:
 # =============================================================================
 # 6. DASHBOARD HEADER
 # =============================================================================
-st.markdown(
-    '<div class="domain-badge">:material/auto_awesome: Student Placement Prediction System</div>',
-    unsafe_allow_html=True,
+st.badge(
+    "Student Placement Prediction System",
+    icon=":material/auto_awesome:",
+    color="blue",
 )
-st.title("Student Placement Prediction & Readiness System")
+st.title("Student placement prediction & readiness system")
 st.caption(
-    f"Production ML Classification Engine, Diagnostic Radar, & Macro Cohort Simulator • "
+    f"Production ML classification engine, diagnostic radar, & macro cohort simulator • "
     f"Driven by **{selected_model_name}**"
 )
 
-# 3 Primary Tabs
+# 3 Primary Tabs — Material icons, sentence casing (per design.md)
 tab1, tab2, tab3 = st.tabs([
-    "📊 Departmental Pulse & Readiness",
-    "🎯 Per-Student Diagnostic & Skill-Gaps",
-    "🧪 Cohort What-If Policy Simulator",
+    ":material/bar_chart: Departmental pulse & readiness",
+    ":material/person_search: Per-student diagnostic & skill-gaps",
+    ":material/tune: Cohort what-if policy simulator",
 ])
 
 
@@ -467,28 +403,32 @@ with tab1:
 
             with kpi1:
                 st.metric(
-                    "Total Cohort Size",
+                    "Total cohort size",
                     f"{total_count:,}",
                     help="Total students in current filter",
                 )
             with kpi2:
                 st.metric(
-                    "Projected Placement Rate",
+                    "Projected placement rate",
                     f"{placement_rate}%",
-                    f"{placed_count} Placed",
+                    f"{placed_count} placed",
                 )
             with kpi3:
                 st.metric(
-                    "Critical Risk (<40%)",
+                    "Critical risk (<40%)",
                     f"{critical_risk_count}",
                     f"{round((critical_risk_count / max(1, total_count)) * 100, 1)}% of cohort",
                     delta_color="inverse",
                 )
             with kpi4:
+                # Sparkline showing probability distribution shape
+                prob_sparkline = sorted(filtered_df["placement_prob"].tolist())
                 st.metric(
-                    "Mean Placement Likelihood",
+                    "Mean placement likelihood",
                     f"{avg_score}%",
                     help="Average predicted probability across cohort",
+                    chart_data=prob_sparkline[-30:],
+                    chart_type="bar",
                 )
 
         # Department Readiness & Risk Donut
@@ -496,7 +436,7 @@ with tab1:
 
         with col_dept:
             with st.container(border=True):
-                st.markdown("#### :material/bar_chart: Readiness by Gender")
+                st.markdown("#### :material/bar_chart: Readiness by gender")
                 dept_stats = (
                     filtered_df.groupby("gender")
                     .agg(
@@ -542,7 +482,7 @@ with tab1:
 
         with col_donut:
             with st.container(border=True):
-                st.markdown("#### :material/pie_chart: Risk Tier Distribution")
+                st.markdown("#### :material/pie_chart: Risk tier distribution")
                 risk_dist = (
                     filtered_df["risk_tier"].value_counts().reset_index()
                 )
@@ -568,7 +508,7 @@ with tab1:
         # Placement Probability Distribution
         with st.container(border=True):
             st.markdown(
-                "#### :material/stacked_line_chart: Placement Probability Distribution & Thresholds"
+                "#### :material/stacked_line_chart: Placement probability distribution & thresholds"
             )
             fig_dist = px.histogram(
                 filtered_df,
@@ -606,9 +546,9 @@ with tab1:
             fig_dist.update_layout(get_plotly_layout(height=260))
             st.plotly_chart(fig_dist, use_container_width=True)
 
-        # Student Roster Table
+        # Student roster table
         with st.container(border=True):
-            st.markdown("#### :material/table_chart: Cohort Candidate Readiness Roster")
+            st.markdown("#### :material/table_chart: Cohort candidate readiness roster")
 
             display_cols = [
                 "student_id",
@@ -625,24 +565,43 @@ with tab1:
             display_cols = [c for c in display_cols if c in filtered_df.columns]
 
             column_configs = {
+                "student_id": st.column_config.TextColumn(
+                    "Student ID", pinned=True,
+                ),
+                "cgpa": st.column_config.ProgressColumn(
+                    "CGPA", format="%.1f", min_value=0, max_value=10,
+                ),
                 "placement_prob": st.column_config.ProgressColumn(
-                    "Placement Likelihood",
+                    "Placement likelihood",
                     help="Model-projected placement probability",
                     format="%.1f%%",
                     min_value=0,
                     max_value=100,
                 ),
-                "risk_tier": st.column_config.TextColumn("Risk Classification"),
-                "predicted_status": st.column_config.TextColumn("Projected Status"),
+                "risk_tier": st.column_config.TextColumn("Risk classification"),
+                "predicted_status": st.column_config.TextColumn("Projected status"),
             }
 
-            st.dataframe(
+            roster_df = (
                 filtered_df[display_cols]
                 .sort_values(by="placement_prob", ascending=False)
-                .head(100),
+            )
+
+            st.dataframe(
+                roster_df,
                 column_config=column_configs,
                 use_container_width=True,
                 hide_index=True,
+            )
+
+            # Download button for export
+            csv_data = roster_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                ":material/download: Download roster CSV",
+                data=csv_data,
+                file_name="cohort_readiness_roster.csv",
+                mime="text/csv",
+                type="tertiary",
             )
 
 
@@ -650,27 +609,24 @@ with tab1:
 # TAB 2: PER-STUDENT DIAGNOSTIC & SKILL-GAP ANALYSIS
 # =============================================================================
 with tab2:
-    st.markdown("### :material/person_search: Candidate Diagnostic & Skill-Gap Diagnosis")
+    st.markdown("### :material/person_search: Candidate diagnostic & skill-gap diagnosis")
     st.caption(
         "Multi-dimensional readiness radar and prescriptive remediation engine"
     )
 
-    diag_mode = st.radio(
-        "Candidate Input Mode:",
-        [
-            ":material/person: Select Existing Candidate from Cohort",
-            ":material/tune: Interactive Custom Candidate Profiler",
-        ],
-        horizontal=True,
+    diag_mode = st.segmented_control(
+        "Candidate input mode",
+        options=["Existing candidate", "Custom profiler"],
+        default="Existing candidate",
     )
 
-    if "Select Existing Candidate" in diag_mode:
+    if diag_mode == "Existing candidate":
         stu_options = filtered_df["student_id"].tolist()
         if not stu_options:
             st.warning("No students available. Adjust sidebar filters.")
             st.stop()
         selected_id = st.selectbox(
-            "Search & Select Student ID:", options=stu_options, index=0
+            "Search & select student ID", options=stu_options, index=0
         )
         student_data = (
             filtered_df[filtered_df["student_id"] == selected_id]
@@ -678,15 +634,15 @@ with tab2:
             .to_dict()
         )
     else:
-        st.info(
-            ":material/tune: Tune candidate metrics to test hypothetical profiles:"
+        st.caption(
+            ":material/tune: Tune candidate metrics to test hypothetical profiles"
         )
 
         with st.container(border=True):
             student_data = {"student_id": 99999}
 
             # Categorical attributes
-            st.markdown("**Categorical Attributes:**")
+            st.markdown("**Categorical attributes**")
             cat_c1, cat_c2 = st.columns(2)
             with cat_c1:
                 student_data["gender"] = st.selectbox(
@@ -702,7 +658,7 @@ with tab2:
                 )
 
             # Numerical attributes
-            st.markdown("**Academic Performance:**")
+            st.markdown("**Academic performance**")
             ac1, ac2, ac3, ac4 = st.columns(4)
             with ac1:
                 student_data["cgpa"] = st.slider(
@@ -737,7 +693,7 @@ with tab2:
                     key="diag_degree_slider",
                 )
 
-            st.markdown("**Skills & Tests:**")
+            st.markdown("**Skills & tests**")
             sk1, sk2, sk3, sk4 = st.columns(4)
             with sk1:
                 student_data["entrance_exam_score"] = st.slider(
@@ -764,7 +720,7 @@ with tab2:
                     key="diag_attendance",
                 )
 
-            st.markdown("**Experience & Credentials:**")
+            st.markdown("**Experience & credentials**")
             ex1, ex2, ex3, ex4, ex5 = st.columns(5)
             with ex1:
                 student_data["backlogs"] = st.number_input(
@@ -800,14 +756,16 @@ with tab2:
                 )
 
     # Evaluate single candidate
-    candidate_prob = predictor.predict_single(student_data)
+    candidate_prob = predictor.predict_single(
+        student_data, model_name=st.session_state.get("active_model")
+    )
     candidate_prob_pct = round(candidate_prob * 100, 1)
 
     diag_left, diag_right = st.columns([1, 2])
 
     with diag_left:
         with st.container(border=True):
-            st.markdown("#### :material/speed: Placement Probability")
+            st.markdown("#### :material/speed: Placement probability")
             bar_color = (
                 "#F87171"
                 if candidate_prob_pct < 50
@@ -866,20 +824,23 @@ with tab2:
 
             if candidate_prob_pct >= 75:
                 st.success(
-                    ":material/verified: **Interview Ready**: High likelihood of shortlisting."
+                    "**Interview ready** — High likelihood of shortlisting.",
+                    icon=":material/verified:",
                 )
             elif candidate_prob_pct >= 50:
                 st.warning(
-                    ":material/warning: **Moderate Risk**: Viable profile requiring focused prep."
+                    "**Moderate risk** — Viable profile requiring focused prep.",
+                    icon=":material/warning:",
                 )
             else:
                 st.error(
-                    ":material/error: **Critical Risk**: Significant preparedness gaps identified."
+                    "**Critical risk** — Significant preparedness gaps identified.",
+                    icon=":material/error:",
                 )
 
     with diag_right:
         with st.container(border=True):
-            st.markdown("#### :material/radar: Multi-Dimensional Competency Radar")
+            st.markdown("#### :material/radar: Multi-dimensional competency radar")
 
             # Define radar axes using available features
             radar_specs = [
@@ -967,9 +928,9 @@ with tab2:
             fig_radar.update_layout(radar_layout)
             st.plotly_chart(fig_radar, use_container_width=True)
 
-    # Prescriptive Remediation Engine
-    st.markdown("---")
-    st.markdown("### :material/lightbulb: Prescriptive Remediation & Targeted Interventions")
+    # Prescriptive remediation engine
+    st.space("small")
+    st.markdown("### :material/lightbulb: Prescriptive remediation & targeted interventions")
     st.caption("Quantified action recommendations with simulated probability uplifts")
 
     remediation_rules = [
@@ -1053,7 +1014,9 @@ with tab2:
                     elif rule["sim_op"] == "set":
                         sim_s[col] = rule["sim_value"]
 
-                new_p = predictor.predict_single(sim_s)
+                new_p = predictor.predict_single(
+                    sim_s, model_name=st.session_state.get("active_model")
+                )
                 gain = round((new_p - candidate_prob) * 100, 1)
 
                 color = (
@@ -1074,19 +1037,33 @@ with tab2:
     if not remediations:
         with st.container(border=True):
             st.success(
-                ":material/celebration: **Optimal Profile**: This candidate already satisfies "
-                "all institutional competency benchmarks!"
+                "**Optimal profile** — This candidate already satisfies "
+                "all institutional competency benchmarks!",
+                icon=":material/celebration:",
             )
     else:
         for rem in remediations:
             with st.container(border=True):
                 r_left, r_mid, r_right = st.columns([1, 4, 2])
                 with r_left:
-                    st.markdown(
-                        f"<span style='color:{rem['color']};font-weight:700;"
-                        f"font-size:0.85rem;'>{rem['priority']} PRIORITY</span>",
-                        unsafe_allow_html=True,
-                    )
+                    if rem["priority"] == "CRITICAL":
+                        st.badge(
+                            "Critical priority",
+                            icon=":material/error:",
+                            color="red",
+                        )
+                    elif rem["priority"] == "HIGH":
+                        st.badge(
+                            "High priority",
+                            icon=":material/warning:",
+                            color="orange",
+                        )
+                    else:
+                        st.badge(
+                            "Medium priority",
+                            icon=":material/info:",
+                            color="blue",
+                        )
                 with r_mid:
                     st.markdown(f"**{rem['title']}**")
                     st.write(rem["action"])
@@ -1098,7 +1075,7 @@ with tab2:
 # TAB 3: COHORT WHAT-IF POLICY SIMULATOR
 # =============================================================================
 with tab3:
-    st.markdown("### :material/tune: Cohort Policy Intervention & What-If Simulator")
+    st.markdown("### :material/tune: Cohort policy intervention & what-if simulator")
     st.caption(
         "Simulate institutional training interventions, risk migrations, "
         "and candidate conversions before allocating budget."
@@ -1108,33 +1085,35 @@ with tab3:
 
     with sim_left:
         with st.container(border=True):
-            st.markdown("#### 1. Define Target Segment")
+            st.markdown("#### 1. Define target segment")
 
-            # Gender segment
+            # Gender segment — pills for small option set
             sim_gender_opts = ["ALL COHORTS"] + sorted(
                 raw_df["gender"].dropna().unique().tolist()
             )
-            sim_target_gender = st.selectbox(
-                "Target Gender Segment",
+            sim_target_gender = st.pills(
+                "Target segment",
                 sim_gender_opts,
-                index=0,
+                default="ALL COHORTS",
                 key="sim_gender",
             )
 
             target_slice = raw_df.copy()
-            if sim_target_gender != "ALL COHORTS":
+            if sim_target_gender and sim_target_gender != "ALL COHORTS":
                 target_slice = target_slice[
                     target_slice["gender"] == sim_target_gender
                 ]
 
             st.caption(
-                f":material/groups: Target Cohort: **{len(target_slice):,}** candidates"
+                f":material/groups: Target cohort: **{len(target_slice):,}** candidates"
             )
 
-            st.markdown("#### 2. Policy Interventions")
+        # Grouped intervention sliders
+        with st.container(border=True):
+            st.markdown("#### 2. Academic interventions")
+            academic_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("attendance_percentage", "backlogs", "entrance_exam_score")]
             interventions_dict = {}
-
-            for knob in INTERVENTION_KNOBS:
+            for knob in academic_knobs:
                 k_col = knob["column"]
                 if k_col in target_slice.columns:
                     label = knob["label"]
@@ -1143,7 +1122,24 @@ with tab3:
                     step_v = float(knob["step"])
                     def_v = float(knob["default"])
                     invert = knob.get("invert", False)
+                    val = st.slider(
+                        label, min_v, max_v, def_v, step_v,
+                        key=f"sim_knob_{k_col}",
+                    )
+                    interventions_dict[k_col] = -val if invert else val
 
+        with st.container(border=True):
+            st.markdown("#### 3. Experiential interventions")
+            exp_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("technical_skill_score", "certifications", "live_projects")]
+            for knob in exp_knobs:
+                k_col = knob["column"]
+                if k_col in target_slice.columns:
+                    label = knob["label"]
+                    min_v = float(knob["min"])
+                    max_v = float(knob["max"])
+                    step_v = float(knob["step"])
+                    def_v = float(knob["default"])
+                    invert = knob.get("invert", False)
                     val = st.slider(
                         label, min_v, max_v, def_v, step_v,
                         key=f"sim_knob_{k_col}",
@@ -1157,35 +1153,35 @@ with tab3:
         )
 
         with st.container(border=True):
-            st.markdown("#### 3. Baseline vs. Simulated Impact")
+            st.markdown("#### 4. Baseline vs. simulated impact")
             res1, res2, res3, res4 = st.columns(4)
             with res1:
                 st.metric(
-                    "Baseline Placement Rate",
+                    "Baseline placement rate",
                     f"{sim_outcomes['baseline_placement_rate']}%",
                 )
             with res2:
                 st.metric(
-                    "Simulated Placement Rate",
+                    "Simulated placement rate",
                     f"{sim_outcomes['simulated_placement_rate']}%",
-                    f"+{sim_outcomes['placement_uplift_pct']}% Uplift",
+                    f"+{sim_outcomes['placement_uplift_pct']}% uplift",
                 )
             with res3:
                 st.metric(
-                    "Newly Placed Students",
+                    "Newly placed students",
                     f"+{sim_outcomes['newly_placed_count']}",
-                    "New Conversions",
+                    "New conversions",
                 )
             with res4:
                 st.metric(
-                    "Transitioned Out of High-Risk",
+                    "Transitioned out of high-risk",
                     f"+{sim_outcomes['net_transitioned_out_of_high_risk']}",
-                    "Risk Reductions",
+                    "Risk reductions",
                 )
 
         # Risk Migration Chart
         with st.container(border=True):
-            st.markdown("#### :material/compare_arrows: Risk Tier Migration Breakdown")
+            st.markdown("#### :material/compare_arrows: Risk tier migration breakdown")
             risk_data = sim_outcomes["risk_migration"]
             if risk_data:
                 categories = list(risk_data["baseline"].keys())
@@ -1218,34 +1214,35 @@ with tab3:
                 fig_mig.update_layout(layout_mig)
                 st.plotly_chart(fig_mig, use_container_width=True)
 
-    # Student Transitions Table
+    # Student transitions table
     with st.container(border=True):
-        st.markdown("#### :material/table_rows: Candidate Transition & Uplift Log")
+        st.markdown("#### :material/table_rows: Candidate transition & uplift log")
         transitions_table = sim_outcomes["student_transitions"]
         if not transitions_table.empty:
             newly_placed_df = transitions_table[
                 transitions_table["newly_shortlistable"] == True
             ]
             st.success(
-                f":material/verified: **{len(newly_placed_df)} at-risk students** "
-                "will successfully cross the shortlisting cutoff under this simulated policy!"
+                f"**{len(newly_placed_df)} at-risk students** "
+                "will successfully cross the shortlisting cutoff under this simulated policy!",
+                icon=":material/verified:",
             )
 
             trans_configs = {
                 "baseline_prob": st.column_config.ProgressColumn(
-                    "Pre-Intervention Prob",
+                    "Pre-intervention prob",
                     format="%.1f%%",
                     min_value=0,
                     max_value=100,
                 ),
                 "simulated_prob": st.column_config.ProgressColumn(
-                    "Post-Intervention Prob",
+                    "Post-intervention prob",
                     format="%.1f%%",
                     min_value=0,
                     max_value=100,
                 ),
                 "prob_gain": st.column_config.NumberColumn(
-                    "Probability Gain", format="+%.1f%%"
+                    "Probability gain", format="+%.1f%%"
                 ),
                 "newly_shortlistable": st.column_config.CheckboxColumn(
                     "Converted?"
@@ -1391,11 +1388,13 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     }
 
 
-with st.expander(
-    ":material/query_stats: Multi-Model Benchmark Comparison Matrix & Performance Validation",
+bench_expander = st.expander(
+    ":material/query_stats: Multi-model benchmark comparison matrix & performance validation",
     expanded=False,
-):
-    st.markdown("### Formal Multi-Model Benchmark Comparison Matrix")
+)
+if bench_expander.open:
+  with bench_expander:
+    st.markdown("### Formal multi-model benchmark comparison matrix")
     st.caption(
         "Compare Logistic Regression, Random Forest, and XGBoost "
         "across accuracy, ROC-AUC, precision, recall, F1, and latency."
@@ -1443,7 +1442,7 @@ with st.expander(
 
         with col_roc:
             with st.container(border=True):
-                st.markdown("#### :material/show_chart: Multi-Model ROC Curves")
+                st.markdown("#### :material/show_chart: Multi-model ROC curves")
                 fig_roc = go.Figure()
                 fig_roc.add_shape(
                     type="line",
@@ -1474,24 +1473,24 @@ with st.expander(
         with col_cm:
             with st.container(border=True):
                 st.markdown(
-                    f"#### :material/grid_on: Confusion Matrix ({best_model_name})"
+                    f"#### :material/grid_on: Confusion matrix ({best_model_name})"
                 )
                 best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
                 fig_cm = px.imshow(
                     best_cm,
                     text_auto=True,
-                    labels=dict(x="Predicted Class", y="Actual Class", color="Count"),
-                    x=["Not Placed (0)", "Placed (1)"],
-                    y=["Not Placed (0)", "Placed (1)"],
+                    labels=dict(x="Predicted class", y="Actual class", color="Count"),
+                    x=["Not placed (0)", "Placed (1)"],
+                    y=["Not placed (0)", "Placed (1)"],
                     color_continuous_scale="Blues",
                 )
                 fig_cm.update_layout(get_plotly_layout(height=300))
                 st.plotly_chart(fig_cm, use_container_width=True)
 
-        # Feature Importance
+        # Feature importance
         if top_features:
             with st.container(border=True):
-                st.markdown(f"#### :material/leaderboard: Global Feature Importance Attribution ({best_model_name})")
+                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({best_model_name})")
                 f_df = pd.DataFrame(top_features, columns=["Feature", "Importance (%)"]).sort_values(by="Importance (%)", ascending=True)
 
                 fig_feat = px.bar(

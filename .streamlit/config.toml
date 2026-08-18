@@ -48,6 +48,20 @@ chartCategoricalColors = [
     "#FB923C",
 ]
 
+# Sequential colors for heatmaps (blue gradient)
+chartSequentialColors = [
+    "#0C4A6E",
+    "#075985",
+    "#0369A1",
+    "#0284C7",
+    "#0EA5E9",
+    "#38BDF8",
+    "#7DD3FC",
+    "#BAE6FD",
+    "#E0F2FE",
+    "#F0F9FF",
+]
+
 # Dataframe & Table Styling
 dataframeBorderColor = "#334155"
 dataframeHeaderBackgroundColor = "#1E293B"
