@@ -1,0 +1,29 @@
+Collecting shap
+  Downloading shap-0.49.1-cp39-cp39-win_amd64.whl (547 kB)
+     -------------------------------------- 547.2/547.2 KB 1.2 MB/s eta 0:00:00
+Requirement already satisfied: typing-extensions in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (4.16.0)
+Requirement already satisfied: tqdm>=4.27.0 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (4.70.0)
+Requirement already satisfied: packaging>20.9 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (25.0)
+Requirement already satisfied: scikit-learn in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (1.6.1)
+Collecting slicer==0.0.8
+  Downloading slicer-0.0.8-py3-none-any.whl (15 kB)
+Collecting numba>=0.54
+  Downloading numba-0.60.0-cp39-cp39-win_amd64.whl (2.7 MB)
+     ---------------------------------------- 2.7/2.7 MB 469.4 kB/s eta 0:00:00
+Requirement already satisfied: pandas in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (2.3.3)
+Requirement already satisfied: scipy in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (1.13.1)
+Requirement already satisfied: numpy in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from shap) (2.0.2)
+Collecting cloudpickle
+  Downloading cloudpickle-3.1.2-py3-none-any.whl (22 kB)
+Collecting llvmlite<0.44,>=0.43.0dev0
+  Downloading llvmlite-0.43.0-cp39-cp39-win_amd64.whl (28.1 MB)
+     ---------------------------------------- 28.1/28.1 MB 1.5 MB/s eta 0:00:00
+Requirement already satisfied: colorama in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from tqdm>=4.27.0->shap) (0.4.6)
+Requirement already satisfied: pytz>=2020.1 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from pandas->shap) (2026.3.post1)
+Requirement already satisfied: tzdata>=2022.7 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from pandas->shap) (2026.3)
+Requirement already satisfied: python-dateutil>=2.8.2 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from pandas->shap) (2.9.0.post0)
+Requirement already satisfied: threadpoolctl>=3.1.0 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from scikit-learn->shap) (3.6.0)
+Requirement already satisfied: joblib>=1.2.0 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from scikit-learn->shap) (1.5.3)
+Requirement already satisfied: six>=1.5 in d:\projects\stdplacement\studentplacementprediction\venv\lib\site-packages (from python-dateutil>=2.8.2->pandas->shap) (1.17.0)
+Installing collected packages: slicer, llvmlite, cloudpickle, numba, shap
+Successfully installed cloudpickle-3.1.2 llvmlite-0.43.0 numba-0.60.0 shap-0.49.1 slicer-0.0.8

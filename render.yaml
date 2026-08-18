@@ -1,0 +1,35 @@
+# render.yaml
+# -----------
+# Render Blueprint for free-tier deployment of the FastAPI backend.
+# https://render.com/docs/blueprint-spec
+#
+# Deploy steps:
+#   1. Push this repo to GitHub.
+#   2. Go to https://dashboard.render.com → New → Blueprint.
+#   3. Connect your GitHub repo — Render will detect this file automatically.
+#   4. Set the PREDICTION_LOG_DB env var in the Render dashboard if you want
+#      a persistent disk path (Render free tier has ephemeral storage).
+
+services:
+  - type: web
+    name: student-placement-api
+    runtime: python
+    plan: free
+    region: singapore   # closest free region to India
+
+    # Build
+    buildCommand: pip install -r requirements.txt
+
+    # Start — PORT is injected by Render automatically
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+
+    # Health check — Render uses this to detect readiness
+    healthCheckPath: /health
+
+    envVars:
+      - key: PREDICTION_LOG_DB
+        value: /opt/render/project/src/logs/predictions.db
+
+      # Uncomment and set your real value in the Render dashboard:
+      # - key: PYTHONUNBUFFERED
+      #   value: "1"

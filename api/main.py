@@ -9,12 +9,16 @@ Start the server:
 Interactive docs:
     http://localhost:8000/docs    (Swagger UI)
     http://localhost:8000/redoc   (ReDoc)
+
+Monitoring:
+    http://localhost:8000/api/v1/drift?model=xgboost
+    http://localhost:8000/logs/summary
 """
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
 from api.config import (
@@ -23,6 +27,8 @@ from api.config import (
     APP_VERSION,
     MODEL_BUNDLES,
 )
+from api.drift import DriftChecker
+from api.logger import PredictionLogger
 from api.predictor import (
     BasePredictor,
     LogisticRegressionPredictor,
@@ -40,6 +46,8 @@ PREDICTOR_TYPES: dict[str, type[BasePredictor]] = {
 
 _predictors: dict[str, BasePredictor] = {}
 _model_errors: dict[str, str] = {}
+_logger: PredictionLogger | None = None
+_drift_checker: DriftChecker | None = None
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -47,12 +55,17 @@ _model_errors: dict[str, str] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
-    Startup: deserialise and validate each production model bundle.
+    Startup: deserialise and validate each production model bundle,
+             initialise prediction logger and drift checker.
     Shutdown: nothing to release (joblib objects are in-memory).
     """
-    global _predictors, _model_errors
+    global _predictors, _model_errors, _logger, _drift_checker
     _predictors.clear()
     _model_errors.clear()
+
+    # ── Prediction logger ────────────────────────────────────────────
+    _logger = PredictionLogger()
+    print(f"[API] Prediction logger initialised → {_logger._db_path}")
 
     print("[API] Initialising production model bundles ...")
 
@@ -82,6 +95,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         print(f"[API] [WARN] Degraded state: {loaded_count}/{total_count} models loaded.")
     else:
         print("[API] [FAIL] Unavailable state: 0 models loaded.")
+
+    # ── Drift checker ────────────────────────────────────────────────
+    _drift_checker = DriftChecker(_logger, MODEL_BUNDLES)
+    print("[API] Drift checker initialised.")
 
     yield   # server is now running
 
@@ -195,10 +212,77 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
         )
 
     try:
-        return predictor.predict(payload)
+        response = predictor.predict(payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inference failed: {type(exc).__name__}: {exc}",
         )
 
+    # Persist prediction to SQLite log (best-effort, never raises)
+    if _logger is not None:
+        _logger.log(payload, response)
+
+    return response
+
+
+# ── Drift endpoint ────────────────────────────────────────────────────────────
+
+@app.get(
+    "/api/v1/drift",
+    summary="Model Drift Check",
+    description=(
+        "Computes Population Stability Index (PSI) between the baseline "
+        "training distribution and the most recent *window* predictions. "
+        "\n\n**Status meanings:**\n"
+        "- `ok` — PSI < 0.10 and mean shift < 0.05 (no significant change)\n"
+        "- `warn` — PSI 0.10–0.20 or shift 0.05–0.10 (monitor closely)\n"
+        "- `alert` — PSI > 0.20 or shift > 0.10 (consider retraining)\n"
+        "- `insufficient_data` — fewer than 20 predictions logged yet"
+    ),
+    tags=["Monitoring"],
+)
+def drift_check(
+    model: str = Query(
+        default="xgboost",
+        description="Model key to check. One of: logistic_regression, random_forest, xgboost.",
+    ),
+    window: int = Query(
+        default=200,
+        ge=20,
+        le=10000,
+        description="Number of most-recent predictions to include in the analysis.",
+    ),
+) -> dict:
+    if model not in MODEL_BUNDLES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown model '{model}'. Valid options: {list(MODEL_BUNDLES.keys())}",
+        )
+    if _drift_checker is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Drift checker not initialised.",
+        )
+    report = _drift_checker.check(model_key=model, window=window)
+    return report.to_dict()
+
+
+@app.get(
+    "/logs/summary",
+    summary="Prediction Log Summary",
+    description="Returns total count of logged predictions per model.",
+    tags=["Monitoring"],
+)
+def log_summary() -> dict:
+    if _logger is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Logger not initialised.",
+        )
+    return {
+        "total": _logger.total_count(),
+        "by_model": {
+            key: _logger.total_count(model=key) for key in MODEL_BUNDLES
+        },
+    }

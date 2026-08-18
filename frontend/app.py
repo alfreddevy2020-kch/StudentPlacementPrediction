@@ -29,7 +29,10 @@ from typing import Optional
 
 BACKEND_URL = os.getenv(
     "BACKEND_URL",
-    "http://localhost:8000/api/v1/predict",
+    st.secrets.get(
+        "BACKEND_URL",
+        "http://localhost:8000/api/v1/predict",
+    ),
 )
 
 
