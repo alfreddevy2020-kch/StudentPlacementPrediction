@@ -100,3 +100,9 @@ venv/
 
 part2/models/
 part2/model_results/
+
+part3/models/
+part3/model_results/
+
+part4/models/
+part4/explainability_results/

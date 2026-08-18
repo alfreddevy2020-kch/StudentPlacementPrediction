@@ -21,3 +21,6 @@ streamlit>=1.30.0
 requests>=2.31.0
 plotly>=5.18.0
 pdfplumber>=0.10.0
+
+# Role 4 - Explainability & Fairness
+shap>=0.44.0

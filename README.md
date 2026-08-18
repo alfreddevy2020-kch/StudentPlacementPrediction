@@ -209,6 +209,65 @@ part2/
 
 ---
 
+## 🔍 Part 4 — Explainability & Bias/Fairness
+
+> **Role:** Explainability & Fairness Lead — SHAP explanations, probability calibration, and demographic fairness audit on the XGBoost model.
+
+All Part 4 files live in the `part4/` folder.
+
+### Quick Start
+
+```bash
+# Prerequisites: dataset, preprocessing, Part 3 XGBoost model
+python download_dataset.py
+python preprocessing.py
+python part3/xgboost_model.py
+
+# Run Part 4 pipeline
+part4\run_pipeline.bat
+```
+
+### Part 4 Scripts
+
+| Script | Description |
+|---|---|
+| `part4/explainability_fairness.py` | SHAP analysis, Platt/isotonic calibration, fairness audit, mitigation report |
+| `part4/run_pipeline.bat` | One-click pipeline runner (Windows) |
+
+### Generated Outputs
+
+After running the pipeline, outputs appear inside `part4/` (excluded from git — regenerate locally):
+
+```
+part4/
+├── models/
+│   └── calibrated_xgboost.joblib
+└── explainability_results/
+    ├── shap_summary_plot.png
+    ├── shap_bar_plot.png
+    ├── shap_waterfall_sample.png
+    ├── shap_values_test.csv
+    ├── shap_global_importance.csv
+    ├── calibration_before_after.png
+    ├── calibration_metrics.csv
+    ├── fairness_group_metrics.csv
+    ├── fairness_fnr_by_group.png
+    └── fairness_report.txt
+```
+
+### Key Deliverables
+
+| Technique | Purpose |
+|---|---|
+| SHAP TreeExplainer | Local + global explanations — why THIS student got their score |
+| Platt scaling / Isotonic regression | Calibrate raw XGBoost scores into trustworthy probabilities |
+| Group-wise FNR audit | Compare false negative rates across gender and extracurricular groups |
+| Mitigation report | Proposed fixes if disparity detected (threshold tuning, monitoring) |
+
+See `part4/work.md` for full documentation and presentation talking points.
+
+---
+
 # 🚀 Part 6 — Model Serving & Application Integration
 
 > **Role:** Backend / API Developer — integrates the trained ML model with
