@@ -7,10 +7,9 @@ on the user-specified sample input.
 
 import sys
 from pathlib import Path
+
 import joblib
-import numpy as np
 import pandas as pd
-import xgboost as xgb
 
 # Add repo root to path so feature_engineering is accessible
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -15,7 +15,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ── Model Selection Enum ────────────────────────────────────────────────────
 
 class ModelName(str, Enum):
@@ -148,16 +147,24 @@ class HealthResponse(BaseModel):
 
     status: str = Field(
         ...,
-        description="'healthy' when all artifacts are loaded; 'degraded' otherwise.",
+        description=(
+            "'healthy' (all models loaded), 'degraded' (1-2 models loaded), "
+            "or 'unavailable' (0 loaded)."
+        ),
         examples=["healthy"],
-    )
-    preprocessor_loaded: bool = Field(
-        ...,
-        description="True when preprocessor.joblib was loaded successfully at startup.",
-        examples=[True],
     )
     models_loaded: dict[str, bool] = Field(
         ...,
         description="Map of model name to whether it was loaded successfully.",
         examples=[{"logistic_regression": True, "random_forest": True, "xgboost": True}],
+    )
+
+
+class ModelsResponse(BaseModel):
+    """Payload returned by GET /api/v1/models."""
+
+    available_models: list[str] = Field(
+        ...,
+        description="List of model identifiers available for inference.",
+        examples=[["logistic_regression", "random_forest", "xgboost"]],
     )

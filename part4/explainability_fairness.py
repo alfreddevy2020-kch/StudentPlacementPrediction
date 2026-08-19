@@ -16,7 +16,6 @@ Run after:
 
 from __future__ import annotations
 
-import os
 import warnings
 from pathlib import Path
 
@@ -27,7 +26,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import shap
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
@@ -74,9 +72,10 @@ plt.rcParams.update(
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 import sys
+
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from feature_engineering import load_raw_dataset, TARGET_COLUMN, TARGET_MAP
+from feature_engineering import TARGET_COLUMN, TARGET_MAP, load_raw_dataset
 
 MODELS_DIR = REPO_ROOT / "part4" / "models"
 RESULTS_DIR = REPO_ROOT / "part4" / "explainability_results"
@@ -459,7 +458,7 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     training_fnr_gap = fnr_gap("placement_training")
     extra_fnr_gap = fnr_gap("extracurricular_activities")
 
-    best_cal = cal_metrics.loc[cal_metrics["selected"], "method"].iloc[0]
+    cal_metrics.loc[cal_metrics["selected"], "method"].iloc[0]
     top_shap = mean_abs_shap.head(5)
 
     lines = [
@@ -575,7 +574,7 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
 
     report_path = RESULTS_DIR / "fairness_report.txt"
     report_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\n  Saved: explainability_results/fairness_report.txt")
+    print("\n  Saved: explainability_results/fairness_report.txt")
 
 
 def main():
@@ -614,7 +613,7 @@ def main():
     print("\nGenerated artifacts:")
     for path in sorted(RESULTS_DIR.glob("*")):
         print(f"  explainability_results/{path.name}")
-    print(f"  models/calibrated_xgboost.joblib")
+    print("  models/calibrated_xgboost.joblib")
 
 
 if __name__ == "__main__":

@@ -12,12 +12,13 @@ import os
 import shutil
 import time
 from pathlib import Path
+
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 TRAIN_PATH = "data/processed/train_processed.csv"
 TEST_PATH = "data/processed/test_processed.csv"

@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Lint · Type-check · Test · Smoke-test
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ───────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Install CI dependencies ─────────────────────────────────────────
+      - name: Install CI dependencies
+        run: pip install -r requirements-ci.txt
+
+      # ── 4. Lint (ruff) ────────────────────────────────────────────────────
+      - name: Lint with ruff
+        run: ruff check . --output-format=github
+
+      # ── 5. Type check (pyright) ───────────────────────────────────────────
+      - name: Type check with pyright
+        run: pyright --project pyrightconfig.json
+        continue-on-error: true   # advisory — doesn't block merge yet
+
+      # ── 6. Run unit + integration tests ───────────────────────────────────
+      - name: Run pytest
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --ignore=tests/test_api.py \
+            -q
+        # test_api.py is skipped here; it auto-skips without artifacts.
+        # To run the full integration suite locally: pytest tests/ -v
+
+      # ── 7. Model smoke test ───────────────────────────────────────────────
+      - name: Smoke-test production model artifacts
+        run: python scripts/smoke_test_models.py
+        # This step only passes if artifacts/production/**/*.joblib are
+        # committed to the repository (allowed by .gitignore negation rules).
+        continue-on-error: false

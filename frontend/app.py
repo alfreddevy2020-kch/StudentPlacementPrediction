@@ -24,7 +24,7 @@ import io
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -42,13 +42,10 @@ if str(FRONTEND_DIR) not in sys.path:
 
 from batch_predictor import (
     BatchPredictor,
-    NUMERICAL_FEATURES,
-    CATEGORICAL_FEATURES,
-    HIGH_RISK_THRESHOLD,
-    MODERATE_RISK_THRESHOLD,
 )
+from simulator import INTERVENTION_KNOBS, CohortWhatIfSimulator
+
 from feature_engineering import FEATURE_RANGES, TARGET_COLUMN, TARGET_MAP
-from simulator import CohortWhatIfSimulator, INTERVENTION_KNOBS
 
 # Try importing pdfplumber for resume parsing (optional)
 try:
@@ -72,41 +69,41 @@ st.set_page_config(
 # and st.container(border=True). No custom CSS injection needed.
 
 
-def get_plotly_layout(height: int = 320, title: Optional[str] = None) -> Dict[str, Any]:
+def get_plotly_layout(height: int = 320, title: Optional[str] = None) -> dict[str, Any]:
     """Returns a unified executive dark Plotly layout aligned with the theme."""
-    layout = dict(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", color="#CBD5E1", size=12),
-        margin=dict(l=24, r=24, t=36 if title else 16, b=24),
-        height=height,
-        xaxis=dict(
-            gridcolor="#334155",
-            zerolinecolor="#334155",
-            tickfont=dict(color="#94A3B8"),
-            title=dict(font=dict(color="#CBD5E1")),
-        ),
-        yaxis=dict(
-            gridcolor="#334155",
-            zerolinecolor="#334155",
-            tickfont=dict(color="#94A3B8"),
-            title=dict(font=dict(color="#CBD5E1")),
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color="#CBD5E1"),
-            bgcolor="rgba(0,0,0,0)",
-        ),
-    )
+    layout = {
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"family": "Inter, sans-serif", "color": "#CBD5E1", "size": 12},
+        "margin": {"l": 24, "r": 24, "t": 36 if title else 16, "b": 24},
+        "height": height,
+        "xaxis": {
+            "gridcolor": "#334155",
+            "zerolinecolor": "#334155",
+            "tickfont": {"color": "#94A3B8"},
+            "title": {"font": {"color": "#CBD5E1"}},
+        },
+        "yaxis": {
+            "gridcolor": "#334155",
+            "zerolinecolor": "#334155",
+            "tickfont": {"color": "#94A3B8"},
+            "title": {"font": {"color": "#CBD5E1"}},
+        },
+        "legend": {
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+            "font": {"color": "#CBD5E1"},
+            "bgcolor": "rgba(0,0,0,0)",
+        },
+    }
     if title:
-        layout["title"] = dict(
-            text=title,
-            font=dict(family="Inter, sans-serif", size=15, color="#F8FAFC"),
-        )
+        layout["title"] = {
+            "text": title,
+            "font": {"family": "Inter, sans-serif", "size": 15, "color": "#F8FAFC"},
+        }
     return layout
 
 
@@ -333,19 +330,21 @@ with st.sidebar:
             type=["pdf"],
             help="Upload a student resume to auto-fill Tab 2 fields.",
         )
-        if resume_file is not None:
-            if st.session_state.get("_last_resume_file") != resume_file.name:
-                parsed = extract_resume_data(resume_file.getvalue())
-                st.session_state["_parsed"] = parsed
-                st.session_state["_last_resume_file"] = resume_file.name
-                for key, val in parsed.items():
-                    if val is not None and key != "name":
-                        st.session_state[f"diag_{key}"] = val
-                if parsed.get("name"):
-                    st.success(
-                        f"Parsed resume for **{parsed['name']}**",
-                        icon=":material/check_circle:",
-                    )
+        if (
+            resume_file is not None
+            and st.session_state.get("_last_resume_file") != resume_file.name
+        ):
+            parsed = extract_resume_data(resume_file.getvalue())
+            st.session_state["_parsed"] = parsed
+            st.session_state["_last_resume_file"] = resume_file.name
+            for key, val in parsed.items():
+                if val is not None and key != "name":
+                    st.session_state[f"diag_{key}"] = val
+            if parsed.get("name"):
+                st.success(
+                    f"Parsed resume for **{parsed['name']}**",
+                    icon=":material/check_circle:",
+                )
     else:
         st.caption(":material/info: Install `pdfplumber` for resume auto-fill support.")
         resume_file = None
@@ -459,88 +458,86 @@ with tab1:
         # Department Readiness & Risk Donut
         col_dept, col_donut = st.columns([3, 2])
 
-        with col_dept:
-            with st.container(border=True):
-                st.markdown("#### :material/bar_chart: Readiness by CGPA band")
-                st.caption(
-                    "This dataset has no department column, so cohorts are "
-                    "banded by CGPA — the closest available grouping."
+        with col_dept, st.container(border=True):
+            st.markdown("#### :material/bar_chart: Readiness by CGPA band")
+            st.caption(
+                "This dataset has no department column, so cohorts are "
+                "banded by CGPA — the closest available grouping."
+            )
+            band_df = filtered_df.copy()
+            band_df["cohort"] = pd.cut(
+                band_df["cgpa"],
+                bins=[0, 7.0, 7.5, 8.0, 8.5, 10.0],
+                labels=["< 7.0", "7.0–7.5", "7.5–8.0", "8.0–8.5", "> 8.5"],
+                include_lowest=True,
+            )
+            dept_stats = (
+                band_df.groupby("cohort", observed=True)
+                .agg(
+                    student_count=("student_id", "count"),
+                    placement_rate=(
+                        "placement_prob",
+                        lambda x: np.round(np.mean(x >= 50.0) * 100, 1),
+                    ),
+                    avg_likelihood=(
+                        "placement_prob",
+                        lambda x: np.round(np.mean(x), 1),
+                    ),
                 )
-                band_df = filtered_df.copy()
-                band_df["cohort"] = pd.cut(
-                    band_df["cgpa"],
-                    bins=[0, 7.0, 7.5, 8.0, 8.5, 10.0],
-                    labels=["< 7.0", "7.0–7.5", "7.5–8.0", "8.0–8.5", "> 8.5"],
-                    include_lowest=True,
-                )
-                dept_stats = (
-                    band_df.groupby("cohort", observed=True)
-                    .agg(
-                        student_count=("student_id", "count"),
-                        placement_rate=(
-                            "placement_prob",
-                            lambda x: np.round(np.mean(x >= 50.0) * 100, 1),
-                        ),
-                        avg_likelihood=(
-                            "placement_prob",
-                            lambda x: np.round(np.mean(x), 1),
-                        ),
-                    )
-                    .reset_index()
-                )
-                dept_stats["cohort"] = dept_stats["cohort"].astype(str)
+                .reset_index()
+            )
+            dept_stats["cohort"] = dept_stats["cohort"].astype(str)
 
-                fig_bar = go.Figure()
-                fig_bar.add_trace(
-                    go.Bar(
-                        x=dept_stats["cohort"],
-                        y=dept_stats["placement_rate"],
-                        name="Placement Rate (%)",
-                        marker_color="#3B82F6",
-                        text=dept_stats["placement_rate"].astype(str) + "%",
-                        textposition="auto",
-                    )
+            fig_bar = go.Figure()
+            fig_bar.add_trace(
+                go.Bar(
+                    x=dept_stats["cohort"],
+                    y=dept_stats["placement_rate"],
+                    name="Placement Rate (%)",
+                    marker_color="#3B82F6",
+                    text=dept_stats["placement_rate"].astype(str) + "%",
+                    textposition="auto",
                 )
-                fig_bar.add_trace(
-                    go.Bar(
-                        x=dept_stats["cohort"],
-                        y=dept_stats["avg_likelihood"],
-                        name="Avg Placement Likelihood (%)",
-                        marker_color="#60A5FA",
-                        text=dept_stats["avg_likelihood"].astype(str) + "%",
-                        textposition="auto",
-                    )
+            )
+            fig_bar.add_trace(
+                go.Bar(
+                    x=dept_stats["cohort"],
+                    y=dept_stats["avg_likelihood"],
+                    name="Avg Placement Likelihood (%)",
+                    marker_color="#60A5FA",
+                    text=dept_stats["avg_likelihood"].astype(str) + "%",
+                    textposition="auto",
                 )
-                layout_bar = get_plotly_layout(height=280)
-                layout_bar["barmode"] = "group"
-                layout_bar["yaxis"]["range"] = [0, 100]
-                fig_bar.update_layout(layout_bar)
-                st.plotly_chart(fig_bar, use_container_width=True)
+            )
+            layout_bar = get_plotly_layout(height=280)
+            layout_bar["barmode"] = "group"
+            layout_bar["yaxis"]["range"] = [0, 100]
+            fig_bar.update_layout(layout_bar)
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-        with col_donut:
-            with st.container(border=True):
-                st.markdown("#### :material/pie_chart: Risk tier distribution")
-                risk_dist = (
-                    filtered_df["risk_tier"].value_counts().reset_index()
-                )
-                risk_dist.columns = ["Risk Tier", "Count"]
+        with col_donut, st.container(border=True):
+            st.markdown("#### :material/pie_chart: Risk tier distribution")
+            risk_dist = (
+                filtered_df["risk_tier"].value_counts().reset_index()
+            )
+            risk_dist.columns = ["Risk Tier", "Count"]
 
-                fig_pie = px.pie(
-                    risk_dist,
-                    names="Risk Tier",
-                    values="Count",
-                    color="Risk Tier",
-                    color_discrete_map=RISK_COLORS,
-                    hole=0.55,
-                )
-                fig_pie.update_traces(
-                    textinfo="percent+label",
-                    textfont=dict(color="#F8FAFC", size=11),
-                )
-                layout_pie = get_plotly_layout(height=280)
-                layout_pie["showlegend"] = False
-                fig_pie.update_layout(layout_pie)
-                st.plotly_chart(fig_pie, use_container_width=True)
+            fig_pie = px.pie(
+                risk_dist,
+                names="Risk Tier",
+                values="Count",
+                color="Risk Tier",
+                color_discrete_map=RISK_COLORS,
+                hole=0.55,
+            )
+            fig_pie.update_traces(
+                textinfo="percent+label",
+                textfont={"color": "#F8FAFC", "size": 11},
+            )
+            layout_pie = get_plotly_layout(height=280)
+            layout_pie["showlegend"] = False
+            fig_pie.update_layout(layout_pie)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
         # Placement Probability Distribution
         with st.container(border=True):
@@ -780,177 +777,175 @@ with tab2:
 
     diag_left, diag_right = st.columns([1, 2])
 
-    with diag_left:
-        with st.container(border=True):
-            st.markdown("#### :material/speed: Placement probability")
-            bar_color = (
-                "#F87171"
-                if candidate_prob_pct < 50
-                else ("#FBBF24" if candidate_prob_pct < 75 else "#34D399")
-            )
-            display_label = str(student_data.get("student_id", "Student"))
+    with diag_left, st.container(border=True):
+        st.markdown("#### :material/speed: Placement probability")
+        bar_color = (
+            "#F87171"
+            if candidate_prob_pct < 50
+            else ("#FBBF24" if candidate_prob_pct < 75 else "#34D399")
+        )
+        display_label = str(student_data.get("student_id", "Student"))
 
-            fig_gauge = go.Figure(
-                go.Indicator(
-                    mode="gauge+number",
-                    value=candidate_prob_pct,
-                    number={
-                        "suffix": "%",
-                        "font": {
-                            "size": 38,
-                            "color": "#F8FAFC",
-                            "family": "JetBrains Mono, monospace",
-                        },
+        fig_gauge = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=candidate_prob_pct,
+                number={
+                    "suffix": "%",
+                    "font": {
+                        "size": 38,
+                        "color": "#F8FAFC",
+                        "family": "JetBrains Mono, monospace",
                     },
-                    title={
-                        "text": f"<b>Student {display_label}</b>",
-                        "font": {"size": 14, "color": "#94A3B8"},
+                },
+                title={
+                    "text": f"<b>Student {display_label}</b>",
+                    "font": {"size": 14, "color": "#94A3B8"},
+                },
+                gauge={
+                    "axis": {
+                        "range": [0, 100],
+                        "tickwidth": 1,
+                        "tickcolor": "#334155",
                     },
-                    gauge={
-                        "axis": {
-                            "range": [0, 100],
-                            "tickwidth": 1,
-                            "tickcolor": "#334155",
+                    "bar": {"color": bar_color, "thickness": 0.35},
+                    "bgcolor": "#1E293B",
+                    "steps": [
+                        {
+                            "range": [0, 50],
+                            "color": "rgba(248, 113, 113, 0.15)",
                         },
-                        "bar": {"color": bar_color, "thickness": 0.35},
-                        "bgcolor": "#1E293B",
-                        "steps": [
-                            {
-                                "range": [0, 50],
-                                "color": "rgba(248, 113, 113, 0.15)",
-                            },
-                            {
-                                "range": [50, 75],
-                                "color": "rgba(251, 191, 36, 0.15)",
-                            },
-                            {
-                                "range": [75, 100],
-                                "color": "rgba(52, 211, 153, 0.15)",
-                            },
-                        ],
-                        "threshold": {
-                            "line": {"color": "#60A5FA", "width": 3},
-                            "thickness": 0.75,
-                            "value": candidate_prob_pct,
+                        {
+                            "range": [50, 75],
+                            "color": "rgba(251, 191, 36, 0.15)",
                         },
+                        {
+                            "range": [75, 100],
+                            "color": "rgba(52, 211, 153, 0.15)",
+                        },
+                    ],
+                    "threshold": {
+                        "line": {"color": "#60A5FA", "width": 3},
+                        "thickness": 0.75,
+                        "value": candidate_prob_pct,
                     },
-                )
+                },
             )
-            fig_gauge.update_layout(get_plotly_layout(height=240))
-            st.plotly_chart(fig_gauge, use_container_width=True)
+        )
+        fig_gauge.update_layout(get_plotly_layout(height=240))
+        st.plotly_chart(fig_gauge, use_container_width=True)
 
-            if candidate_prob_pct >= 75:
-                st.success(
-                    "**Interview ready** — High likelihood of shortlisting.",
-                    icon=":material/verified:",
-                )
-            elif candidate_prob_pct >= 50:
-                st.warning(
-                    "**Moderate risk** — Viable profile requiring focused prep.",
-                    icon=":material/warning:",
+        if candidate_prob_pct >= 75:
+            st.success(
+                "**Interview ready** — High likelihood of shortlisting.",
+                icon=":material/verified:",
+            )
+        elif candidate_prob_pct >= 50:
+            st.warning(
+                "**Moderate risk** — Viable profile requiring focused prep.",
+                icon=":material/warning:",
+            )
+        else:
+            st.error(
+                "**Critical risk** — Significant preparedness gaps identified.",
+                icon=":material/error:",
+            )
+
+    with diag_right, st.container(border=True):
+        st.markdown("#### :material/radar: Multi-dimensional competency radar")
+
+        # Define radar axes using available features, each rescaled to 0-100
+        radar_specs = [
+            {"column": "cgpa", "label": "CGPA (×10)", "scale_factor": 10.0},
+            {"column": "ssc_marks", "label": "SSC %", "scale_factor": 1.0},
+            {"column": "hsc_marks", "label": "HSC %", "scale_factor": 1.0},
+            {"column": "aptitude_test_score", "label": "Aptitude", "scale_factor": 1.0},
+            {"column": "soft_skills_rating", "label": "Soft skills (×20)", "scale_factor": 20.0},
+            {"column": "projects", "label": "Projects (×33)", "scale_factor": 33.3},
+            {"column": "workshops_certifications", "label": "Certs (×33)", "scale_factor": 33.3},
+        ]
+
+        # Compute placed peers benchmark. raw_df keeps the original text
+        # target ("Placed"/"NotPlaced"), so compare against the label.
+        target_col = TARGET_COLUMN
+        placed_mask = (
+            raw_df[target_col].astype(str) == "Placed"
+            if target_col in raw_df.columns
+            else None
+        )
+        placed_peers = (
+            raw_df[placed_mask]
+            if placed_mask is not None and placed_mask.any()
+            else raw_df
+        )
+
+        radar_categories = []
+        cand_radar_vals = []
+        placed_radar_vals = []
+
+        for r_spec in radar_specs:
+            col_name = r_spec["column"]
+            scale_f = float(r_spec["scale_factor"])
+            label = r_spec["label"]
+            radar_categories.append(label)
+
+            # Candidate value
+            cand_val = min(
+                100.0,
+                max(0.0, float(student_data.get(col_name, 0.0)) * scale_f),
+            )
+            cand_radar_vals.append(cand_val)
+
+            # Placed peers average
+            if col_name in placed_peers.columns:
+                peer_val = min(
+                    100.0,
+                    max(0.0, float(placed_peers[col_name].mean()) * scale_f),
                 )
             else:
-                st.error(
-                    "**Critical risk** — Significant preparedness gaps identified.",
-                    icon=":material/error:",
-                )
+                peer_val = 0.0
+            placed_radar_vals.append(peer_val)
 
-    with diag_right:
-        with st.container(border=True):
-            st.markdown("#### :material/radar: Multi-dimensional competency radar")
-
-            # Define radar axes using available features, each rescaled to 0-100
-            radar_specs = [
-                {"column": "cgpa", "label": "CGPA (×10)", "scale_factor": 10.0},
-                {"column": "ssc_marks", "label": "SSC %", "scale_factor": 1.0},
-                {"column": "hsc_marks", "label": "HSC %", "scale_factor": 1.0},
-                {"column": "aptitude_test_score", "label": "Aptitude", "scale_factor": 1.0},
-                {"column": "soft_skills_rating", "label": "Soft skills (×20)", "scale_factor": 20.0},
-                {"column": "projects", "label": "Projects (×33)", "scale_factor": 33.3},
-                {"column": "workshops_certifications", "label": "Certs (×33)", "scale_factor": 33.3},
-            ]
-
-            # Compute placed peers benchmark. raw_df keeps the original text
-            # target ("Placed"/"NotPlaced"), so compare against the label.
-            target_col = TARGET_COLUMN
-            placed_mask = (
-                raw_df[target_col].astype(str) == "Placed"
-                if target_col in raw_df.columns
-                else None
+        fig_radar = go.Figure()
+        fig_radar.add_trace(
+            go.Scatterpolar(
+                r=placed_radar_vals,
+                theta=radar_categories,
+                fill="toself",
+                name="Placed Peers Benchmark",
+                line_color="#64748B",
+                fillcolor="rgba(100, 116, 139, 0.2)",
+                opacity=0.5,
             )
-            placed_peers = (
-                raw_df[placed_mask]
-                if placed_mask is not None and placed_mask.any()
-                else raw_df
+        )
+        fig_radar.add_trace(
+            go.Scatterpolar(
+                r=cand_radar_vals,
+                theta=radar_categories,
+                fill="toself",
+                name="Selected Candidate",
+                line_color="#60A5FA",
+                fillcolor="rgba(96, 165, 250, 0.35)",
+                opacity=0.9,
             )
-
-            radar_categories = []
-            cand_radar_vals = []
-            placed_radar_vals = []
-
-            for r_spec in radar_specs:
-                col_name = r_spec["column"]
-                scale_f = float(r_spec["scale_factor"])
-                label = r_spec["label"]
-                radar_categories.append(label)
-
-                # Candidate value
-                cand_val = min(
-                    100.0,
-                    max(0.0, float(student_data.get(col_name, 0.0)) * scale_f),
-                )
-                cand_radar_vals.append(cand_val)
-
-                # Placed peers average
-                if col_name in placed_peers.columns:
-                    peer_val = min(
-                        100.0,
-                        max(0.0, float(placed_peers[col_name].mean()) * scale_f),
-                    )
-                else:
-                    peer_val = 0.0
-                placed_radar_vals.append(peer_val)
-
-            fig_radar = go.Figure()
-            fig_radar.add_trace(
-                go.Scatterpolar(
-                    r=placed_radar_vals,
-                    theta=radar_categories,
-                    fill="toself",
-                    name="Placed Peers Benchmark",
-                    line_color="#64748B",
-                    fillcolor="rgba(100, 116, 139, 0.2)",
-                    opacity=0.5,
-                )
-            )
-            fig_radar.add_trace(
-                go.Scatterpolar(
-                    r=cand_radar_vals,
-                    theta=radar_categories,
-                    fill="toself",
-                    name="Selected Candidate",
-                    line_color="#60A5FA",
-                    fillcolor="rgba(96, 165, 250, 0.35)",
-                    opacity=0.9,
-                )
-            )
-            radar_layout = get_plotly_layout(height=300)
-            radar_layout["polar"] = dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, 100],
-                    gridcolor="#334155",
-                    tickfont=dict(color="#94A3B8"),
-                ),
-                angularaxis=dict(
-                    gridcolor="#334155",
-                    tickfont=dict(color="#CBD5E1", size=11),
-                ),
-                bgcolor="rgba(0,0,0,0)",
-            )
-            radar_layout["showlegend"] = True
-            fig_radar.update_layout(radar_layout)
-            st.plotly_chart(fig_radar, use_container_width=True)
+        )
+        radar_layout = get_plotly_layout(height=300)
+        radar_layout["polar"] = {
+            "radialaxis": {
+                "visible": True,
+                "range": [0, 100],
+                "gridcolor": "#334155",
+                "tickfont": {"color": "#94A3B8"},
+            },
+            "angularaxis": {
+                "gridcolor": "#334155",
+                "tickfont": {"color": "#CBD5E1", "size": 11},
+            },
+            "bgcolor": "rgba(0,0,0,0)",
+        }
+        radar_layout["showlegend"] = True
+        fig_radar.update_layout(radar_layout)
+        st.plotly_chart(fig_radar, use_container_width=True)
 
     # Prescriptive remediation engine
     st.space("small")
@@ -1258,7 +1253,7 @@ with tab3:
         transitions_table = sim_outcomes["student_transitions"]
         if not transitions_table.empty:
             newly_placed_df = transitions_table[
-                transitions_table["newly_shortlistable"] == True
+                transitions_table["newly_shortlistable"]
             ]
             st.success(
                 f"**{len(newly_placed_df)} at-risk students** "
@@ -1307,12 +1302,18 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     Evaluates Logistic Regression, Random Forest, and XGBoost on a held-out
     test split with 5-fold cross validation. Cached to avoid UI latency.
     """
-    from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
-    from sklearn.metrics import (
-        roc_auc_score, accuracy_score, precision_score,
-        recall_score, f1_score, confusion_matrix, roc_curve,
-    )
     import time
+
+    from sklearn.metrics import (
+        accuracy_score,
+        confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+        roc_curve,
+    )
+    from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 
     bench_df = raw_df.copy()
     if "placement_target" in bench_df.columns:
@@ -1346,9 +1347,11 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
 
     for m_name, m_model in predictor._models.items():
         # Ensure scikit-learn compatibility
-        if hasattr(m_model, "__class__") and "LogisticRegression" in m_model.__class__.__name__:
-            if not hasattr(m_model, "multi_class"):
-                m_model.multi_class = "auto"
+        if (
+            "LogisticRegression" in m_model.__class__.__name__
+            and not hasattr(m_model, "multi_class")
+        ):
+            m_model.multi_class = "auto"
 
         y_pred = m_model.predict(X_test_proc)
         y_prob = m_model.predict_proba(X_test_proc)[:, 1]
@@ -1357,7 +1360,7 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
         precision = float(precision_score(y_test_b, y_pred, zero_division=0))
         recall_val = float(recall_score(y_test_b, y_pred, zero_division=0))
         f1_val = float(f1_score(y_test_b, y_pred, zero_division=0))
-        accuracy = float(accuracy_score(y_test_b, y_pred))
+        float(accuracy_score(y_test_b, y_pred))
 
         # Latency benchmark
         t0 = time.perf_counter()
@@ -1508,52 +1511,50 @@ with bench_expander:
         # ROC Curves & Confusion Matrix
         col_roc, col_cm = st.columns(2)
 
-        with col_roc:
-            with st.container(border=True):
-                st.markdown("#### :material/show_chart: Multi-model ROC curves")
-                fig_roc = go.Figure()
-                fig_roc.add_shape(
-                    type="line",
-                    line=dict(dash="dash", color="#64748B"),
-                    x0=0, x1=1, y0=0, y1=1,
-                )
+        with col_roc, st.container(border=True):
+            st.markdown("#### :material/show_chart: Multi-model ROC curves")
+            fig_roc = go.Figure()
+            fig_roc.add_shape(
+                type="line",
+                line={"dash": "dash", "color": "#64748B"},
+                x0=0, x1=1, y0=0, y1=1,
+            )
 
-                for m_name, m_met in detailed_metrics.items():
-                    r_curve = m_met["roc_curve"]
-                    fig_roc.add_trace(
-                        go.Scatter(
-                            x=r_curve["fpr"],
-                            y=r_curve["tpr"],
-                            name=f"{m_name} (AUC={m_met['test_roc_auc']:.3f})",
-                            mode="lines",
-                            line=dict(
-                                color=model_colors.get(m_name, "#60A5FA"),
-                                width=2.5,
-                            ),
-                        )
+            for m_name, m_met in detailed_metrics.items():
+                r_curve = m_met["roc_curve"]
+                fig_roc.add_trace(
+                    go.Scatter(
+                        x=r_curve["fpr"],
+                        y=r_curve["tpr"],
+                        name=f"{m_name} (AUC={m_met['test_roc_auc']:.3f})",
+                        mode="lines",
+                        line={
+                            "color": model_colors.get(m_name, "#60A5FA"),
+                            "width": 2.5,
+                        },
                     )
-                layout_roc = get_plotly_layout(height=300)
-                layout_roc["xaxis"]["title"] = "False Positive Rate"
-                layout_roc["yaxis"]["title"] = "True Positive Rate"
-                fig_roc.update_layout(layout_roc)
-                st.plotly_chart(fig_roc, use_container_width=True)
+                )
+            layout_roc = get_plotly_layout(height=300)
+            layout_roc["xaxis"]["title"] = "False Positive Rate"
+            layout_roc["yaxis"]["title"] = "True Positive Rate"
+            fig_roc.update_layout(layout_roc)
+            st.plotly_chart(fig_roc, use_container_width=True)
 
-        with col_cm:
-            with st.container(border=True):
-                st.markdown(
-                    f"#### :material/grid_on: Confusion matrix ({best_model_name})"
-                )
-                best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
-                fig_cm = px.imshow(
-                    best_cm,
-                    text_auto=True,
-                    labels=dict(x="Predicted class", y="Actual class", color="Count"),
-                    x=["Not placed (0)", "Placed (1)"],
-                    y=["Not placed (0)", "Placed (1)"],
-                    color_continuous_scale="Blues",
-                )
-                fig_cm.update_layout(get_plotly_layout(height=300))
-                st.plotly_chart(fig_cm, use_container_width=True)
+        with col_cm, st.container(border=True):
+            st.markdown(
+                f"#### :material/grid_on: Confusion matrix ({best_model_name})"
+            )
+            best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
+            fig_cm = px.imshow(
+                best_cm,
+                text_auto=True,
+                labels={"x": "Predicted class", "y": "Actual class", "color": "Count"},
+                x=["Not placed (0)", "Placed (1)"],
+                y=["Not placed (0)", "Placed (1)"],
+                color_continuous_scale="Blues",
+            )
+            fig_cm.update_layout(get_plotly_layout(height=300))
+            st.plotly_chart(fig_cm, use_container_width=True)
 
         # Feature importance
         if top_features:

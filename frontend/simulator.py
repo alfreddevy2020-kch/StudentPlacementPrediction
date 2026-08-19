@@ -8,14 +8,13 @@ Ported from prediction.txt and adapted to the current project's
 dataset schema. No LLM or adaptive logic.
 """
 
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+from batch_predictor import HIGH_RISK_THRESHOLD, MODERATE_RISK_THRESHOLD, BatchPredictor
 
-from batch_predictor import BatchPredictor, HIGH_RISK_THRESHOLD, MODERATE_RISK_THRESHOLD
 from feature_engineering import FEATURE_RANGES
-
 
 # ── Default intervention levers ─────────────────────────────────────────────
 # Hardcoded to the existing dataset's numerical columns.
@@ -94,8 +93,8 @@ class CohortWhatIfSimulator:
     def simulate_policy_intervention(
         self,
         cohort_df: pd.DataFrame,
-        interventions: Optional[Dict[str, float]] = None,
-    ) -> Dict[str, Any]:
+        interventions: Optional[dict[str, float]] = None,
+    ) -> dict[str, Any]:
         """
         Applies parameterized policy shifts on a cohort and computes
         baseline vs simulated placement metrics and risk tier migrations.
@@ -136,16 +135,19 @@ class CohortWhatIfSimulator:
         sim_df = cohort_df.copy()
         if interventions:
             for col, delta in interventions.items():
-                if col in sim_df.columns and delta != 0:
-                    if pd.api.types.is_numeric_dtype(sim_df[col]):
-                        sim_df[col] = sim_df[col] + delta
-                        # Clamp to the observed training range. Pushing a
-                        # feature past what the model was trained on produces
-                        # confident nonsense, so an intervention can only
-                        # move students to the top of the real range.
-                        lo, hi = FEATURE_RANGES.get(col, (None, None))
-                        if lo is not None:
-                            sim_df[col] = np.clip(sim_df[col], lo, hi)
+                if (
+                    col in sim_df.columns
+                    and delta != 0
+                    and pd.api.types.is_numeric_dtype(sim_df[col])
+                ):
+                    sim_df[col] = sim_df[col] + delta
+                    # Clamp to the observed training range. Pushing a
+                    # feature past what the model was trained on produces
+                    # confident nonsense, so an intervention can only
+                    # move students to the top of the real range.
+                    lo, hi = FEATURE_RANGES.get(col, (None, None))
+                    if lo is not None:
+                        sim_df[col] = np.clip(sim_df[col], lo, hi)
 
         # 3. Post-Intervention Predictions
         sim_probs = self.predict_probabilities(sim_df)
@@ -163,7 +165,7 @@ class CohortWhatIfSimulator:
         sim_high_risk = sim_probs < HIGH_RISK_THRESHOLD
         transitioned_out = int(np.sum(base_high_risk & ~sim_high_risk))
 
-        def get_risk_counts(probs: np.ndarray) -> Dict[str, int]:
+        def get_risk_counts(probs: np.ndarray) -> dict[str, int]:
             return {
                 "High Risk (<50%)": int(np.sum(probs < HIGH_RISK_THRESHOLD)),
                 "Moderate Risk (50-75%)": int(

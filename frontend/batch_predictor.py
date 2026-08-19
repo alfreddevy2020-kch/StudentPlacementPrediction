@@ -9,32 +9,29 @@ without the FastAPI backend server.
 
 import sys
 from pathlib import Path
-from typing import Dict, Optional
 
 # Ensure repository root is in sys.path for feature_engineering import
 BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from feature_engineering import (
-    engineer_features,
-    load_raw_dataset,
-    RAW_NUMERICAL_FEATURES,
-    RAW_CATEGORICAL_FEATURES,
-    ALL_NUMERICAL_FEATURES,
-)
-
 import joblib
 import numpy as np
 import pandas as pd
 
-
+from feature_engineering import (
+    ALL_NUMERICAL_FEATURES,
+    RAW_CATEGORICAL_FEATURES,
+    RAW_NUMERICAL_FEATURES,
+    engineer_features,
+    load_raw_dataset,
+)
 
 # ── Artifact Paths ──────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
 
-MODEL_PATHS: Dict[str, Path] = {
+MODEL_PATHS: dict[str, Path] = {
     "Random Forest": BASE_DIR / "part2" / "models" / "random_forest_best.joblib",
     "Logistic Regression": BASE_DIR / "part2" / "models" / "logistic_regression_best.joblib",
     "XGBoost": BASE_DIR / "part3" / "models" / "xgboost_best.joblib",
@@ -60,7 +57,7 @@ class BatchPredictor:
 
     def __init__(self) -> None:
         self._preprocessor = None
-        self._models: Dict[str, object] = {}
+        self._models: dict[str, object] = {}
         self._active_model_name: str = ""
         self._loaded = False
 
@@ -78,9 +75,11 @@ class BatchPredictor:
             if path.exists():
                 m = joblib.load(path)
                 # Auto-heal scikit-learn compatibility attributes across versions
-                if hasattr(m, "__class__") and "LogisticRegression" in m.__class__.__name__:
-                    if not hasattr(m, "multi_class"):
-                        m.multi_class = "auto"
+                if (
+                    "LogisticRegression" in m.__class__.__name__
+                    and not hasattr(m, "multi_class")
+                ):
+                    m.multi_class = "auto"
                 self._models[name] = m
 
         if not self._models:

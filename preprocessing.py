@@ -1,25 +1,22 @@
 import os
-import pandas as pd
-import numpy as np
-import joblib
 
-from sklearn.model_selection import train_test_split
+import joblib
+import pandas as pd
+from imblearn.over_sampling import SMOTE
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from imblearn.over_sampling import SMOTE
-
 from feature_engineering import (
-    engineer_features,
-    fit_normalization_stats,
-    load_raw_dataset,
     RAW_CATEGORICAL_FEATURES,
     TARGET_COLUMN,
     TARGET_MAP,
+    engineer_features,
+    fit_normalization_stats,
+    load_raw_dataset,
 )
-
 
 # ============================================================
 # 1. LOAD DATASET

@@ -1,0 +1,28 @@
+# ============================================================
+# requirements-ci.txt
+# Minimal dependencies for GitHub Actions CI.
+# Pinned versions match the serialized production model artifacts.
+# ============================================================
+
+# Core ML (pinned to match serialized joblib artifacts)
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0
+scikit-learn==1.6.1
+joblib>=1.3.0
+xgboost>=2.0.0
+
+# API layer
+fastapi>=0.100.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+
+# Test client
+httpx>=0.25.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+
+# Linting & type checking
+ruff>=0.3.0
+pyright>=1.1.350

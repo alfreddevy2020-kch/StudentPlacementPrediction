@@ -19,28 +19,28 @@ import time
 import warnings
 
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 import xgboost as xgb
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.model_selection import (
     GridSearchCV,
     RandomizedSearchCV,
     StratifiedKFold,
-)
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    roc_auc_score,
-    average_precision_score,
-    f1_score,
-    brier_score_loss,
-    roc_curve,
-    precision_recall_curve,
 )
 
 warnings.filterwarnings("ignore")
@@ -305,7 +305,7 @@ gain_df = pd.DataFrame({
     "importance": list(mapped_importance.values()),
 }).sort_values("importance", ascending=False).reset_index(drop=True)
 
-print(f"\n  Top 10 features (Gain):")
+print("\n  Top 10 features (Gain):")
 print(gain_df.head(10).to_string(index=False))
 
 # ============================================================
@@ -329,7 +329,7 @@ weight_df = pd.DataFrame({
     "importance": list(mapped_weight.values()),
 }).sort_values("importance", ascending=False).reset_index(drop=True)
 
-print(f"\n  Top 10 features (Weight / splits):")
+print("\n  Top 10 features (Weight / splits):")
 print(weight_df.head(10).to_string(index=False))
 
 # ============================================================
@@ -484,6 +484,7 @@ print("-" * 50)
 # Copy canonical preprocessor from part2/models/ to part3/models/
 import shutil
 from pathlib import Path
+
 from feature_engineering import engineer_features
 
 src_prep = Path("part2/models/preprocessor.joblib")
@@ -535,7 +536,7 @@ elif sample_proba[1] >= 0.5:
 else:
     risk = "Low Probability of Placement (High Risk)"
 
-print(f"\n  Input: cgpa=8.1, ssc=82.0, hsc=85.0, aptitude=88.0, ...")
+print("\n  Input: cgpa=8.1, ssc=82.0, hsc=85.0, aptitude=88.0, ...")
 print(f"  Placement Status : {pred_status}")
 print(f"  Placement Label  : {pred_label}")
 print(f"  P(Placed)        : {sample_proba[1]:.4f}")

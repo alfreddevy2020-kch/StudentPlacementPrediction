@@ -92,9 +92,9 @@ Central configuration. Resolves artifact paths relative to the file's own
 location, so the server works from any working directory.
 
 ```python
-BASE_DIR          = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
-MODEL_PATH        = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
+MODEL_PATH = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
 ```
 
 Also holds `APP_TITLE`, `APP_DESCRIPTION`, and `APP_VERSION` used by the
@@ -196,16 +196,16 @@ ALL_RAW_FEATURES = RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES  # 10 total
 
 **`RandomForestPredictor.load()`** — called once at startup:
 ```python
-preprocessor = joblib.load(preprocessor_path)   # ColumnTransformer
-model        = joblib.load(model_path)           # RandomForestClassifier
+preprocessor = joblib.load(preprocessor_path)  # ColumnTransformer
+model = joblib.load(model_path)  # RandomForestClassifier
 ```
 
 **`RandomForestPredictor.predict()`** — called per request:
 ```python
-df            = _input_to_dataframe(data)           # StudentInput → DataFrame
-X_transformed = self._preprocessor.transform(df)   # 15 cols → 17 scaled cols
-label         = int(self._model.predict(X_transformed)[0])
-proba         = self._model.predict_proba(X_transformed)[0]
+df = _input_to_dataframe(data)  # StudentInput → DataFrame
+X_transformed = self._preprocessor.transform(df)  # 15 cols → 17 scaled cols
+label = int(self._model.predict(X_transformed)[0])
+proba = self._model.predict_proba(X_transformed)[0]
 # proba = [P(class=0), P(class=1)]  i.e.  [P(Not Placed), P(Placed)]
 ```
 
@@ -313,7 +313,7 @@ using the `requests` library:
 BACKEND_URL = "http://localhost:8000/api/v1/predict"
 
 response = requests.post(BACKEND_URL, json=payload, timeout=10)
-result   = response.json()
+result = response.json()
 ```
 
 The `payload` dict built by `render_sidebar()` contains exactly the 15
