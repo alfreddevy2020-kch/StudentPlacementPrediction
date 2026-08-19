@@ -138,6 +138,11 @@ except Exception as e:
     tree_method = "hist"
     device = "cpu"
 
+# On Windows, using multiprocessing with XGBoost (especially with OpenMP/CUDA)
+# is highly prone to deadlocks. Pin n_jobs to 1 to guarantee stability.
+search_n_jobs = 1
+print(f"  Using n_jobs={search_n_jobs} for grid/random search.")
+
 # ============================================================
 # 3. PHASE 1 — RANDOMIZED SEARCH (broad sweep on GPU)
 # ============================================================
@@ -175,7 +180,7 @@ random_search = RandomizedSearchCV(
     n_iter=100,
     cv=cv,
     scoring="f1",
-    n_jobs=-1,
+    n_jobs=search_n_jobs,
     verbose=1,
     random_state=42,
 )
@@ -239,7 +244,7 @@ grid_search = GridSearchCV(
     fine_grid,
     cv=cv,
     scoring="f1",
-    n_jobs=-1,
+    n_jobs=search_n_jobs,
     verbose=1,
 )
 
