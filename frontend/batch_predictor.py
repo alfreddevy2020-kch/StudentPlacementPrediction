@@ -29,13 +29,37 @@ from feature_engineering import (
 
 # ── Artifact Paths ──────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
-PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
+
+# Prefer the committed production bundles (available on Streamlit Cloud).
+# Fall back to local dev paths (part2/models, part3/models) for local runs
+# where the full training pipeline has been executed.
+PROD_DIR = BASE_DIR / "artifacts" / "production"
+
+def _resolve(prod_rel: str, dev_rel: str) -> Path:
+    """Return the production path if it exists, otherwise the dev path."""
+    prod = PROD_DIR / prod_rel
+    return prod if prod.exists() else BASE_DIR / dev_rel
+
+PREPROCESSOR_PATH: Path = _resolve(
+    "random_forest/preprocessor.joblib",
+    "part2/models/preprocessor.joblib",
+)
 
 MODEL_PATHS: dict[str, Path] = {
-    "Random Forest": BASE_DIR / "part2" / "models" / "random_forest_best.joblib",
-    "Logistic Regression": BASE_DIR / "part2" / "models" / "logistic_regression_best.joblib",
-    "XGBoost": BASE_DIR / "part3" / "models" / "xgboost_best.joblib",
+    "Random Forest": _resolve(
+        "random_forest/model.joblib",
+        "part2/models/random_forest_best.joblib",
+    ),
+    "Logistic Regression": _resolve(
+        "logistic_regression/model.joblib",
+        "part2/models/logistic_regression_best.joblib",
+    ),
+    "XGBoost": _resolve(
+        "xgboost/model.joblib",
+        "part3/models/xgboost_best.joblib",
+    ),
 }
+
 
 # ── Feature columns expected by the fitted preprocessor ─────────────────────
 # These must exactly match what the ColumnTransformer was fitted on.
