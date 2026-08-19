@@ -11,7 +11,14 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from imblearn.over_sampling import SMOTE
 
-from feature_engineering import engineer_features, fit_normalization_stats, RAW_CATEGORICAL_FEATURES
+from feature_engineering import (
+    engineer_features,
+    fit_normalization_stats,
+    load_raw_dataset,
+    RAW_CATEGORICAL_FEATURES,
+    TARGET_COLUMN,
+    TARGET_MAP,
+)
 
 
 # ============================================================
@@ -20,7 +27,9 @@ from feature_engineering import engineer_features, fit_normalization_stats, RAW_
 
 INPUT_FILE = "data/raw/student_placement.csv"
 
-df = pd.read_csv(INPUT_FILE)
+# load_raw_dataset() also snake_cases the raw CSV headers, so every
+# downstream consumer sees the same canonical column names.
+df = load_raw_dataset(INPUT_FILE)
 
 print("=" * 60)
 print("DATASET LOADED")
@@ -59,10 +68,16 @@ else:
 # 3. TARGET CREATION
 # ============================================================
 
-df["placement_target"] = df["placement_status"].map({
-    "Not Placed": 0,
-    "Placed": 1
-})
+df["placement_target"] = df[TARGET_COLUMN].map(TARGET_MAP)
+
+if df["placement_target"].isnull().any():
+    unmapped = df.loc[df["placement_target"].isnull(), TARGET_COLUMN].unique()
+    raise ValueError(
+        f"Unmapped {TARGET_COLUMN} values: {list(unmapped)}. "
+        f"Expected one of {list(TARGET_MAP)} - update TARGET_MAP in "
+        "feature_engineering.py if the dataset labels changed."
+    )
+df["placement_target"] = df["placement_target"].astype(int)
 
 
 print("\n" + "=" * 60)
@@ -104,7 +119,7 @@ print("FEATURE ENGINEERING")
 print("=" * 60)
 
 
-# Freeze github_repos_max / linkedin_connections_max from the FULL training
+# Freeze the count-feature maxima from the FULL training
 # dataset BEFORE engineering features, so every inference-time caller
 # (dashboard, API, simulator) reuses this exact constant instead of
 # recomputing its own batch-local max. See feature_engineering.py.
@@ -125,21 +140,17 @@ print("\n" + "=" * 60)
 print("LEAKAGE PREVENTION")
 print("=" * 60)
 
-# salary_package_lpa is known only after placement.
-# Therefore it cannot be used to predict placement.
-
-df = df.drop(columns=["salary_package_lpa"])
-
+# This dataset ships no post-outcome columns (no salary/package field), so
+# the only leakage source to remove is the original text target itself.
 # placement_status is the original text target.
 # placement_target is the numerical target.
 
-df = df.drop(columns=["placement_status"])
+df = df.drop(columns=[TARGET_COLUMN])
 
 
 print("Removed:")
 print("- student_id")
-print("- salary_package_lpa")
-print("- placement_status")
+print(f"- {TARGET_COLUMN}")
 
 print("\nTarget column:")
 print("- placement_target")
@@ -460,40 +471,47 @@ print("part2/models/preprocessor.joblib")
 
 
 # ============================================================
-# 16. TREND FEATURE DOCUMENTATION
+# 16. DATA COVERAGE & LIMITATIONS
 # ============================================================
 
 print("\n" + "=" * 60)
-print("TREND FEATURE ANALYSIS")
+print("DATA COVERAGE & LIMITATIONS")
 print("=" * 60)
 
 print(
     """
-Semester-level trend features were considered,
-including:
+Feature families covered by this dataset:
 
-- CGPA progression
-- Attendance progression
-- Semester-wise performance change
-- Rate of change in academic performance
+- Marks            : cgpa, ssc_marks, hsc_marks
+- Mock-test scores : aptitude_test_score
+- Skills           : soft_skills_rating
+- Project work     : projects
+- Certifications   : workshops_certifications
+- Experience       : internships
 
-However, the available dataset contains only
-aggregate CGPA and attendance values.
+Families the source data does NOT contain, and which
+are therefore absent rather than fabricated:
 
-Therefore, genuine semester-level trend features
-cannot be calculated without introducing fabricated
-data.
+- Backlogs / arrears
+- Attendance percentage
+- Department / branch
+- Demographic attributes (gender, college tier)
 
-The project instead uses aggregate and derived
-features such as:
+Two consequences follow, and are documented rather
+than worked around:
 
-- Academic score
-- Adjusted academic score
-- Experience score
-- Skill score
-- Interview readiness
-- Placement readiness
-- Study/sleep ratio
+1. Department-level trend reporting is replaced by
+   segmentation on placement_training and
+   extracurricular_activities.
+2. The Part 4 bias audit uses placement_training as
+   its equity axis (access to training) instead of a
+   protected demographic attribute.
+
+Derived features (see feature_engineering.py) do not
+measurably raise ROC-AUC on this dataset - the raw
+features are already close to sufficient. They exist
+to power the dashboard's skill-gap radar, per-student
+readiness scores and the what-if simulator.
 """
 )
 

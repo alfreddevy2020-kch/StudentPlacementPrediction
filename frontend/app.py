@@ -47,6 +47,7 @@ from batch_predictor import (
     HIGH_RISK_THRESHOLD,
     MODERATE_RISK_THRESHOLD,
 )
+from feature_engineering import FEATURE_RANGES, TARGET_COLUMN, TARGET_MAP
 from simulator import CohortWhatIfSimulator, INTERVENTION_KNOBS
 
 # Try importing pdfplumber for resume parsing (optional)
@@ -133,16 +134,16 @@ def extract_resume_data(pdf_bytes: bytes) -> dict:
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         text = "\n".join(page.extract_text() or "" for page in pdf.pages)
 
+    # Keys match the raw feature names, so callers can write them straight
+    # into st.session_state["diag_<key>"] to prefill the Tab 2 inputs.
     result = {
         "name": None,
         "cgpa": None,
-        "ssc_percentage": None,
-        "hsc_percentage": None,
-        "degree_percentage": None,
-        "certifications": None,
-        "internship_count": None,
-        "live_projects": None,
-        "work_experience_months": None,
+        "ssc_marks": None,
+        "hsc_marks": None,
+        "workshops_certifications": None,
+        "internships": None,
+        "projects": None,
     }
 
     lines = [line.strip() for line in text.split("\n") if line.strip()]
@@ -175,7 +176,7 @@ def extract_resume_data(pdf_bytes: bytes) -> dict:
         text, re.IGNORECASE,
     )
     if m:
-        result["ssc_percentage"] = min(float(m.group(1)), 100.0)
+        result["ssc_marks"] = min(float(m.group(1)), 100.0)
 
     # -- HSC (12th) percentage --
     m = re.search(
@@ -183,25 +184,16 @@ def extract_resume_data(pdf_bytes: bytes) -> dict:
         text, re.IGNORECASE,
     )
     if m:
-        result["hsc_percentage"] = min(float(m.group(1)), 100.0)
+        result["hsc_marks"] = min(float(m.group(1)), 100.0)
 
-    # -- Degree percentage --
-    m = re.search(
-        r"(?:degree|graduation|b\.?tech|b\.?e\.?)\s*(?:percentage|marks)?"
-        r"[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["degree_percentage"] = min(float(m.group(1)), 100.0)
-
-    # -- Certifications count --
+    # -- Certifications / workshops count --
     cert_match = re.search(
-        r"(?:certification|certificate|courses?)[\\s:]*\n"
+        r"(?:certification|certificate|workshops?|courses?)[\\s:]*\n"
         r"((?:[-•*]\s*.+\n?)+)",
         text, re.IGNORECASE,
     )
     if cert_match:
-        result["certifications"] = len(
+        result["workshops_certifications"] = len(
             re.findall(r"[-•*]\s*.+", cert_match.group(1))
         )
 
@@ -212,17 +204,17 @@ def extract_resume_data(pdf_bytes: bytes) -> dict:
         text, re.IGNORECASE,
     )
     if exp_match:
-        result["internship_count"] = len(
+        result["internships"] = len(
             re.findall(r"[-•*]\s*.+", exp_match.group(1))
         )
 
-    # -- Live projects --
+    # -- Projects --
     proj_match = re.search(
         r"(?:projects?|portfolio)[\s:]*\n((?:[-•*]\s*.+\n?)+)",
         text, re.IGNORECASE,
     )
     if proj_match:
-        result["live_projects"] = len(
+        result["projects"] = len(
             re.findall(r"[-•*]\s*.+", proj_match.group(1))
         )
 
@@ -289,43 +281,45 @@ with st.sidebar:
     st.space("small")
     st.subheader(":material/filter_alt: Cohort filters")
 
-    # Gender filter
-    gender_options = ["ALL"] + sorted(raw_df["gender"].dropna().unique().tolist())
-    selected_gender = st.pills(
-        "Gender", gender_options, default="ALL", key="filter_gender"
+    # This dataset carries no demographic or department columns, so cohorts
+    # are segmented on the two institutional-support flags it does provide.
+    selected_training = st.pills(
+        "Placement training",
+        ["ALL"] + sorted(raw_df["placement_training"].dropna().unique().tolist()),
+        default="ALL",
+        key="filter_training",
     )
 
-    # Branch filter
-    branch_options = ["ALL"] + sorted(raw_df["branch"].dropna().unique().tolist()) if "branch" in raw_df.columns else ["ALL"]
-    selected_branch = st.pills(
-        "Branch", branch_options, default="ALL", key="filter_branch"
+    selected_extra = st.pills(
+        "Extracurricular activities",
+        ["ALL"] + sorted(raw_df["extracurricular_activities"].dropna().unique().tolist()),
+        default="ALL",
+        key="filter_extra",
     )
 
-    # College Tier filter
-    tier_options = ["ALL"] + sorted(raw_df["college_tier"].dropna().unique().tolist()) if "college_tier" in raw_df.columns else ["ALL"]
-    selected_tier = st.pills(
-        "College Tier", tier_options, default="ALL", key="filter_tier"
-    )
-
-    # Volunteer Experience filter
-    vol_col = "volunteer_experience" if "volunteer_experience" in raw_df.columns else "gender"
-    vol_options = ["ALL"] + sorted(raw_df[vol_col].dropna().unique().tolist())
-    selected_vol = st.pills(
-        "Volunteer Experience", vol_options, default="ALL", key="filter_vol"
+    # Academic band filter — derived, gives a department-style breakdown
+    cgpa_band_options = ["ALL", "< 7.0", "7.0 – 8.0", "> 8.0"]
+    selected_band = st.pills(
+        "CGPA band", cgpa_band_options, default="ALL", key="filter_band"
     )
 
     # Apply filters
     filtered_df = raw_df.copy()
-    if selected_gender and selected_gender != "ALL":
-        filtered_df = filtered_df[filtered_df["gender"] == selected_gender]
-    if selected_branch and selected_branch != "ALL":
-        filtered_df = filtered_df[filtered_df["branch"] == selected_branch]
-    if selected_tier and selected_tier != "ALL":
-        filtered_df = filtered_df[filtered_df["college_tier"] == selected_tier]
-    if selected_vol and selected_vol != "ALL" and "volunteer_experience" in filtered_df.columns:
+    if selected_training and selected_training != "ALL":
+        filtered_df = filtered_df[filtered_df["placement_training"] == selected_training]
+    if selected_extra and selected_extra != "ALL":
         filtered_df = filtered_df[
-            filtered_df["volunteer_experience"] == selected_vol
+            filtered_df["extracurricular_activities"] == selected_extra
         ]
+    if selected_band and selected_band != "ALL":
+        if selected_band == "< 7.0":
+            filtered_df = filtered_df[filtered_df["cgpa"] < 7.0]
+        elif selected_band == "7.0 – 8.0":
+            filtered_df = filtered_df[
+                (filtered_df["cgpa"] >= 7.0) & (filtered_df["cgpa"] <= 8.0)
+            ]
+        else:
+            filtered_df = filtered_df[filtered_df["cgpa"] > 8.0]
 
     cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
     st.caption(f":material/groups: Active cohort: **{cohort_ratio}** students")
@@ -366,8 +360,19 @@ if not filtered_df.empty:
             filtered_df, model_name=st.session_state.get("active_model")
         )
     except Exception as pred_err:
-        st.warning(f":material/warning: Prediction error: {pred_err}")
-        cohort_probs = np.full(len(filtered_df), 0.5)
+        st.error(
+            f":material/error: **Prediction pipeline failed:** `{pred_err}`\n\n"
+            "The loaded preprocessor/model artifacts in `part2/models/` and "
+            "`part3/models/` don't match the columns `feature_engineering.py` "
+            "produces from `data/raw/student_placement.csv`. Showing a "
+            "placeholder probability for every student would silently hide "
+            "this mismatch, so the dashboard stops here instead.\n\n"
+            "Regenerate the artifacts for the current schema: "
+            "`python download_dataset.py` → `python preprocessing.py` → "
+            "retrain the models (e.g. `python scripts/train_models_fast.py`), "
+            "then reload this page."
+        )
+        st.stop()
 
     filtered_df = filtered_df.copy()
     filtered_df["placement_prob"] = np.round(cohort_probs * 100, 1)
@@ -456,9 +461,20 @@ with tab1:
 
         with col_dept:
             with st.container(border=True):
-                st.markdown("#### :material/bar_chart: Readiness by gender")
+                st.markdown("#### :material/bar_chart: Readiness by CGPA band")
+                st.caption(
+                    "This dataset has no department column, so cohorts are "
+                    "banded by CGPA — the closest available grouping."
+                )
+                band_df = filtered_df.copy()
+                band_df["cohort"] = pd.cut(
+                    band_df["cgpa"],
+                    bins=[0, 7.0, 7.5, 8.0, 8.5, 10.0],
+                    labels=["< 7.0", "7.0–7.5", "7.5–8.0", "8.0–8.5", "> 8.5"],
+                    include_lowest=True,
+                )
                 dept_stats = (
-                    filtered_df.groupby("gender")
+                    band_df.groupby("cohort", observed=True)
                     .agg(
                         student_count=("student_id", "count"),
                         placement_rate=(
@@ -472,11 +488,12 @@ with tab1:
                     )
                     .reset_index()
                 )
+                dept_stats["cohort"] = dept_stats["cohort"].astype(str)
 
                 fig_bar = go.Figure()
                 fig_bar.add_trace(
                     go.Bar(
-                        x=dept_stats["gender"],
+                        x=dept_stats["cohort"],
                         y=dept_stats["placement_rate"],
                         name="Placement Rate (%)",
                         marker_color="#3B82F6",
@@ -486,7 +503,7 @@ with tab1:
                 )
                 fig_bar.add_trace(
                     go.Bar(
-                        x=dept_stats["gender"],
+                        x=dept_stats["cohort"],
                         y=dept_stats["avg_likelihood"],
                         name="Avg Placement Likelihood (%)",
                         marker_color="#60A5FA",
@@ -572,14 +589,15 @@ with tab1:
 
             display_cols = [
                 "student_id",
-                "gender",
-                "branch",
-                "college_tier",
                 "cgpa",
-                "attendance_percentage",
-                "backlogs",
-                "coding_skill_score",
-                "certifications_count",
+                "ssc_marks",
+                "hsc_marks",
+                "aptitude_test_score",
+                "soft_skills_rating",
+                "internships",
+                "projects",
+                "workshops_certifications",
+                "placement_training",
                 "placement_prob",
                 "risk_tier",
                 "predicted_status",
@@ -593,9 +611,18 @@ with tab1:
                 "cgpa": st.column_config.ProgressColumn(
                     "CGPA", format="%.1f", min_value=0, max_value=10,
                 ),
-                "coding_skill_score": st.column_config.ProgressColumn(
-                    "Coding Score", format="%.0f", min_value=0, max_value=100,
+                "ssc_marks": st.column_config.NumberColumn("SSC %", format="%.0f"),
+                "hsc_marks": st.column_config.NumberColumn("HSC %", format="%.0f"),
+                "aptitude_test_score": st.column_config.ProgressColumn(
+                    "Aptitude", format="%.0f", min_value=0, max_value=100,
                 ),
+                "soft_skills_rating": st.column_config.ProgressColumn(
+                    "Soft skills", format="%.1f", min_value=0, max_value=5,
+                ),
+                "internships": st.column_config.NumberColumn("Internships"),
+                "projects": st.column_config.NumberColumn("Projects"),
+                "workshops_certifications": st.column_config.NumberColumn("Certs"),
+                "placement_training": st.column_config.TextColumn("Training"),
                 "placement_prob": st.column_config.ProgressColumn(
                     "Placement likelihood",
                     help="Model-projected placement probability",
@@ -666,136 +693,83 @@ with tab2:
         with st.container(border=True):
             student_data = {"student_id": 99999}
 
-            # Categorical attributes
-            st.markdown("**Demographics & Institution**")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                student_data["gender"] = st.selectbox(
-                    "Gender", options=["Male", "Female"], key="diag_gender"
-                )
-            with c2:
-                branch_list = sorted(raw_df["branch"].dropna().unique().tolist()) if "branch" in raw_df.columns else ["CSE", "IT", "ECE", "EEE", "Mechanical", "Civil"]
-                student_data["branch"] = st.selectbox(
-                    "Branch", options=branch_list, key="diag_branch"
-                )
-            with c3:
-                tier_list = sorted(raw_df["college_tier"].dropna().unique().tolist()) if "college_tier" in raw_df.columns else ["Tier 1", "Tier 2", "Tier 3"]
-                student_data["college_tier"] = st.selectbox(
-                    "College Tier", options=tier_list, key="diag_tier"
-                )
-            with c4:
-                student_data["volunteer_experience"] = st.selectbox(
-                    "Volunteer Experience", options=["Yes", "No"], key="diag_vol"
-                )
+            st.caption(
+                "Slider ranges match the model's training data. Values at the "
+                "extremes are still within what the model has seen."
+            )
 
             # Academic Performance
-            st.markdown("**Academic & Core Profile**")
-            ac1, ac2, ac3, ac4 = st.columns(4)
+            st.markdown("**Academic record**")
+            ac1, ac2, ac3 = st.columns(3)
             with ac1:
                 student_data["cgpa"] = st.slider(
                     "Current CGPA",
-                    0.0, 10.0,
-                    value=float(st.session_state.get("diag_cgpa", 7.5)),
+                    6.5, 9.1,
+                    value=float(st.session_state.get("diag_cgpa", 7.7)),
                     step=0.1,
                     key="diag_cgpa_slider",
                 )
             with ac2:
-                student_data["attendance_percentage"] = st.slider(
-                    "Attendance %",
-                    0.0, 100.0,
-                    value=float(st.session_state.get("diag_attendance", 85.0)),
+                student_data["ssc_marks"] = st.slider(
+                    "SSC / Class 10 %",
+                    55.0, 90.0,
+                    value=float(st.session_state.get("diag_ssc_marks", 70.0)),
                     step=1.0,
-                    key="diag_att_slider",
+                    key="diag_ssc_slider",
                 )
             with ac3:
-                student_data["backlogs"] = st.number_input(
-                    "Active Backlogs", 0, 20,
-                    value=int(st.session_state.get("diag_backlogs", 0)),
-                    key="diag_backlogs_input"
-                )
-            with ac4:
-                student_data["age"] = st.number_input(
-                    "Age", 18, 40,
-                    value=int(st.session_state.get("diag_age", 21)),
-                    key="diag_age_input"
+                student_data["hsc_marks"] = st.slider(
+                    "HSC / Class 12 %",
+                    57.0, 88.0,
+                    value=float(st.session_state.get("diag_hsc_marks", 74.0)),
+                    step=1.0,
+                    key="diag_hsc_slider",
                 )
 
             # Skills & Test Scores
-            st.markdown("**Skills & Assessment Scores**")
-            sk1, sk2, sk3, sk4, sk5 = st.columns(5)
+            st.markdown("**Skills & assessment**")
+            sk1, sk2 = st.columns(2)
             with sk1:
-                student_data["coding_skill_score"] = st.slider(
-                    "Coding Score", 0.0, 100.0, 75.0, 1.0, key="diag_coding"
+                student_data["aptitude_test_score"] = st.slider(
+                    "Aptitude test score", 60.0, 90.0, 80.0, 1.0, key="diag_aptitude"
                 )
             with sk2:
-                student_data["aptitude_score"] = st.slider(
-                    "Aptitude Score", 0.0, 100.0, 75.0, 1.0, key="diag_aptitude"
-                )
-            with sk3:
-                student_data["communication_skill_score"] = st.slider(
-                    "Communication Score", 0.0, 100.0, 75.0, 1.0, key="diag_comm"
-                )
-            with sk4:
-                student_data["logical_reasoning_score"] = st.slider(
-                    "Logical Reasoning", 0.0, 100.0, 75.0, 1.0, key="diag_logical"
-                )
-            with sk5:
-                student_data["mock_interview_score"] = st.slider(
-                    "Mock Interview", 0.0, 100.0, 70.0, 1.0, key="diag_mock"
+                student_data["soft_skills_rating"] = st.slider(
+                    "Soft skills rating (0–5)", 3.0, 4.8, 4.3, 0.1, key="diag_soft"
                 )
 
-            # Experience & Professional Presence
-            st.markdown("**Experience & Professional Presence**")
-            ex1, ex2, ex3, ex4, ex5, ex6 = st.columns(6)
+            # Experience & portfolio
+            st.markdown("**Experience & portfolio**")
+            ex1, ex2, ex3 = st.columns(3)
             with ex1:
-                student_data["internships_count"] = st.number_input(
-                    "Internships", 0, 10,
-                    value=int(st.session_state.get("diag_internships_count", 1)),
+                student_data["internships"] = st.number_input(
+                    "Internships", 0, 2,
+                    value=int(st.session_state.get("diag_internships", 1)),
                     key="diag_intern_input"
                 )
             with ex2:
-                student_data["projects_count"] = st.number_input(
-                    "Projects", 0, 20,
-                    value=int(st.session_state.get("diag_projects_count", 2)),
+                student_data["projects"] = st.number_input(
+                    "Projects", 0, 3,
+                    value=int(st.session_state.get("diag_projects", 2)),
                     key="diag_proj_input"
                 )
             with ex3:
-                student_data["certifications_count"] = st.number_input(
-                    "Certifications", 0, 20,
-                    value=int(st.session_state.get("diag_certifications_count", 2)),
+                student_data["workshops_certifications"] = st.number_input(
+                    "Workshops / certifications", 0, 3,
+                    value=int(st.session_state.get("diag_workshops_certifications", 1)),
                     key="diag_certs_input"
                 )
-            with ex4:
-                student_data["hackathons_participated"] = st.number_input(
-                    "Hackathons", 0, 15, 1, key="diag_hack_input"
-                )
-            with ex5:
-                student_data["github_repos"] = st.number_input(
-                    "GitHub Repos", 0, 100, 8, key="diag_git_input"
-                )
-            with ex6:
-                student_data["linkedin_connections"] = st.number_input(
-                    "LinkedIn Conn.", 0, 1000, 200, key="diag_li_input"
-                )
 
-            # Leadership, Activities & Habits
-            st.markdown("**Leadership, Extracurricular & Lifestyle**")
-            ls1, ls2, ls3, ls4 = st.columns(4)
-            with ls1:
-                student_data["extracurricular_score"] = st.slider(
-                    "Extracurricular Score", 0.0, 100.0, 65.0, 1.0, key="diag_extra_score"
+            # Institutional support
+            st.markdown("**Institutional support**")
+            su1, su2 = st.columns(2)
+            with su1:
+                student_data["placement_training"] = st.selectbox(
+                    "Placement training", options=["Yes", "No"], key="diag_training"
                 )
-            with ls2:
-                student_data["leadership_score"] = st.slider(
-                    "Leadership Score", 0.0, 100.0, 60.0, 1.0, key="diag_lead_score"
-                )
-            with ls3:
-                student_data["study_hours_per_day"] = st.slider(
-                    "Study Hours / Day", 0.0, 16.0, 4.0, 0.5, key="diag_study_hours"
-                )
-            with ls4:
-                student_data["sleep_hours"] = st.slider(
-                    "Sleep Hours / Day", 0.0, 16.0, 7.0, 0.5, key="diag_sleep_hours"
+            with su2:
+                student_data["extracurricular_activities"] = st.selectbox(
+                    "Extracurricular activities", options=["Yes", "No"], key="diag_extra"
                 )
 
     # Evaluate single candidate
@@ -885,21 +859,28 @@ with tab2:
         with st.container(border=True):
             st.markdown("#### :material/radar: Multi-dimensional competency radar")
 
-            # Define radar axes using available features
+            # Define radar axes using available features, each rescaled to 0-100
             radar_specs = [
                 {"column": "cgpa", "label": "CGPA (×10)", "scale_factor": 10.0},
-                {"column": "attendance_percentage", "label": "Attendance %", "scale_factor": 1.0},
-                {"column": "coding_skill_score", "label": "Coding Skill", "scale_factor": 1.0},
-                {"column": "communication_skill_score", "label": "Communication", "scale_factor": 1.0},
-                {"column": "aptitude_score", "label": "Aptitude", "scale_factor": 1.0},
-                {"column": "certifications_count", "label": "Certs (×20)", "scale_factor": 20.0},
+                {"column": "ssc_marks", "label": "SSC %", "scale_factor": 1.0},
+                {"column": "hsc_marks", "label": "HSC %", "scale_factor": 1.0},
+                {"column": "aptitude_test_score", "label": "Aptitude", "scale_factor": 1.0},
+                {"column": "soft_skills_rating", "label": "Soft skills (×20)", "scale_factor": 20.0},
+                {"column": "projects", "label": "Projects (×33)", "scale_factor": 33.3},
+                {"column": "workshops_certifications", "label": "Certs (×33)", "scale_factor": 33.3},
             ]
 
-            # Compute placed peers benchmark
-            target_col = "placement_status"
+            # Compute placed peers benchmark. raw_df keeps the original text
+            # target ("Placed"/"NotPlaced"), so compare against the label.
+            target_col = TARGET_COLUMN
+            placed_mask = (
+                raw_df[target_col].astype(str) == "Placed"
+                if target_col in raw_df.columns
+                else None
+            )
             placed_peers = (
-                raw_df[raw_df[target_col] == 1]
-                if target_col in raw_df.columns and (raw_df[target_col] == 1).any()
+                raw_df[placed_mask]
+                if placed_mask is not None and placed_mask.any()
                 else raw_df
             )
 
@@ -976,69 +957,81 @@ with tab2:
     st.markdown("### :material/lightbulb: Prescriptive remediation & targeted interventions")
     st.caption("Quantified action recommendations with simulated probability uplifts")
 
+    # sim_value bounds stay inside the training ranges in FEATURE_RANGES —
+    # recommending a value the model has never seen would produce a
+    # confident but meaningless uplift number.
     remediation_rules = [
         {
-            "condition": lambda s: s.get("backlogs", 0) > 0,
+            "condition": lambda s: s.get("placement_training", "Yes") == "No",
             "priority": "CRITICAL",
-            "title": "Clear Active Backlogs",
-            "action": "Enroll in fast-track backlog clearance before corporate shortlisting begins.",
-            "sim_column": "backlogs",
-            "sim_op": "subtract",
+            "title": "Enrol in Placement Training",
+            "action": "Join the institutional placement-training programme — the single strongest controllable factor in this cohort.",
+            "sim_column": "placement_training",
+            "sim_op": "set",
+            "sim_value": "Yes",
+        },
+        {
+            "condition": lambda s: s.get("aptitude_test_score", 100) < 78,
+            "priority": "HIGH",
+            "title": "Raise Aptitude Test Score",
+            "action": "Complete structured aptitude coaching and timed mock tests to lift quantitative and reasoning scores.",
+            "sim_column": "aptitude_test_score",
+            "sim_op": "add",
+            "sim_value": 10.0,
+        },
+        {
+            "condition": lambda s: s.get("soft_skills_rating", 5.0) < 4.3,
+            "priority": "HIGH",
+            "title": "Strengthen Communication & Soft Skills",
+            "action": "Attend group-discussion and mock-interview workshops to improve the soft-skills rating.",
+            "sim_column": "soft_skills_rating",
+            "sim_op": "add",
+            "sim_value": 0.5,
+        },
+        {
+            "condition": lambda s: s.get("projects", 10) < 2,
+            "priority": "MEDIUM",
+            "title": "Build End-to-End Projects",
+            "action": "Complete at least two deployed projects to demonstrate practical capability.",
+            "sim_column": "projects",
+            "sim_op": "add",
             "sim_value": 1.0,
         },
         {
-            "condition": lambda s: s.get("attendance_percentage", 100) < 75.0,
-            "priority": "HIGH",
-            "title": "Raise Attendance to 75%+ Target",
-            "action": "Complete remedial attendance coursework to pass corporate screening filters.",
-            "sim_column": "attendance_percentage",
-            "sim_op": "set",
-            "sim_value": 78.0,
-        },
-        {
-            "condition": lambda s: s.get("coding_skill_score", 100) < 70,
-            "priority": "HIGH",
-            "title": "Boost Coding & Technical Skills",
-            "action": "Complete coding bootcamp and competitive programming to improve technical readiness.",
-            "sim_column": "coding_skill_score",
-            "sim_op": "add",
-            "sim_value": 15.0,
-        },
-        {
-            "condition": lambda s: s.get("certifications_count", 10) < 2,
+            "condition": lambda s: s.get("workshops_certifications", 10) < 2,
             "priority": "MEDIUM",
             "title": "Pursue Industry Certifications",
-            "action": "Earn at least 2 industry certifications (AWS, Azure, Google Cloud, etc.).",
-            "sim_column": "certifications_count",
-            "sim_op": "add",
-            "sim_value": 2.0,
-        },
-        {
-            "condition": lambda s: s.get("projects_count", 10) < 2,
-            "priority": "MEDIUM",
-            "title": "Build Live Projects",
-            "action": "Complete at least two end-to-end deployed projects to demonstrate practical skills.",
-            "sim_column": "projects_count",
+            "action": "Earn additional industry certifications (AWS, Azure, Google Cloud, etc.).",
+            "sim_column": "workshops_certifications",
             "sim_op": "add",
             "sim_value": 1.0,
         },
         {
-            "condition": lambda s: s.get("cgpa", 10) < 7.0,
+            "condition": lambda s: s.get("cgpa", 10) < 7.5,
             "priority": "MEDIUM",
-            "title": "Improve CGPA Above 7.0",
-            "action": "Focus on upcoming semester exams — many companies set 7.0 CGPA as the minimum cutoff.",
+            "title": "Improve CGPA Above 7.5",
+            "action": "Focus on upcoming semester exams — many companies set a CGPA cutoff at shortlisting.",
             "sim_column": "cgpa",
-            "sim_op": "set",
-            "sim_value": 7.2,
+            "sim_op": "add",
+            "sim_value": 0.5,
         },
         {
-            "condition": lambda s: s.get("internships_count", 10) < 1,
+            "condition": lambda s: s.get("internships", 10) < 1,
             "priority": "MEDIUM",
             "title": "Secure an Internship",
             "action": "Apply for at least one internship to gain industry exposure before placements.",
-            "sim_column": "internships_count",
+            "sim_column": "internships",
             "sim_op": "add",
             "sim_value": 1.0,
+        },
+        {
+            "condition": lambda s: s.get("extracurricular_activities", "Yes") == "No",
+            "priority": "LOW",
+            "title": "Join Extracurricular Activities",
+            "action": "Participate in clubs or events to build the collaborative profile recruiters screen for.",
+            "sim_column": "extracurricular_activities",
+            "sim_op": "set",
+            "sim_value": "Yes",
         },
     ]
 
@@ -1051,11 +1044,16 @@ with tab2:
                 col = rule["sim_column"]
                 if col in sim_s:
                     if rule["sim_op"] == "subtract":
-                        sim_s[col] = max(0, sim_s[col] - rule["sim_value"])
+                        sim_s[col] = sim_s[col] - rule["sim_value"]
                     elif rule["sim_op"] == "add":
                         sim_s[col] = sim_s[col] + rule["sim_value"]
                     elif rule["sim_op"] == "set":
                         sim_s[col] = rule["sim_value"]
+                    # Keep the simulated profile inside the training range so
+                    # the quoted uplift reflects something the model has seen.
+                    lo, hi = FEATURE_RANGES.get(col, (None, None))
+                    if lo is not None:
+                        sim_s[col] = min(max(sim_s[col], lo), hi)
 
                 new_p = predictor.predict_single(
                     sim_s, model_name=st.session_state.get("active_model")
@@ -1071,7 +1069,8 @@ with tab2:
                     "priority": rule["priority"],
                     "title": rule["title"],
                     "action": rule["action"],
-                    "uplift": f"+{gain}% Placement Uplift",
+                    # Sign-aware: a negative gain must not render as "+-4.5%".
+                    "uplift": f"{gain:+.1f}% Placement Uplift",
                     "color": color,
                 })
         except Exception:
@@ -1130,64 +1129,60 @@ with tab3:
         with st.container(border=True):
             st.markdown("#### 1. Define target segment")
 
-            # Gender segment — pills for small option set
-            sim_gender_opts = ["ALL COHORTS"] + sorted(
-                raw_df["gender"].dropna().unique().tolist()
-            )
-            sim_target_gender = st.pills(
+            # No demographic columns in this dataset, so the target segment
+            # is defined by who has already received institutional support.
+            sim_segment = st.pills(
                 "Target segment",
-                sim_gender_opts,
+                ["ALL COHORTS", "Untrained only", "Trained only", "No extracurriculars"],
                 default="ALL COHORTS",
-                key="sim_gender",
+                key="sim_segment",
             )
 
             target_slice = raw_df.copy()
-            if sim_target_gender and sim_target_gender != "ALL COHORTS":
+            if sim_segment == "Untrained only":
+                target_slice = target_slice[target_slice["placement_training"] == "No"]
+            elif sim_segment == "Trained only":
+                target_slice = target_slice[target_slice["placement_training"] == "Yes"]
+            elif sim_segment == "No extracurriculars":
                 target_slice = target_slice[
-                    target_slice["gender"] == sim_target_gender
+                    target_slice["extracurricular_activities"] == "No"
                 ]
 
             st.caption(
                 f":material/groups: Target cohort: **{len(target_slice):,}** candidates"
             )
 
-        # Grouped intervention sliders
+        def render_knobs(knobs, store):
+            """Render one group of intervention sliders into `store`."""
+            for knob in knobs:
+                k_col = knob["column"]
+                if k_col not in target_slice.columns:
+                    continue
+                val = st.slider(
+                    knob["label"],
+                    float(knob["min"]), float(knob["max"]),
+                    float(knob["default"]), float(knob["step"]),
+                    key=f"sim_knob_{k_col}",
+                )
+                store[k_col] = -val if knob.get("invert", False) else val
+
+        interventions_dict = {}
+
+        # Grouped intervention sliders — grouping comes from the knob
+        # definitions in simulator.py, not a hardcoded column list.
         with st.container(border=True):
             st.markdown("#### 2. Academic interventions")
-            academic_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("attendance_percentage", "backlogs", "aptitude_score")]
-            interventions_dict = {}
-            for knob in academic_knobs:
-                k_col = knob["column"]
-                if k_col in target_slice.columns:
-                    label = knob["label"]
-                    min_v = float(knob["min"])
-                    max_v = float(knob["max"])
-                    step_v = float(knob["step"])
-                    def_v = float(knob["default"])
-                    invert = knob.get("invert", False)
-                    val = st.slider(
-                        label, min_v, max_v, def_v, step_v,
-                        key=f"sim_knob_{k_col}",
-                    )
-                    interventions_dict[k_col] = -val if invert else val
+            render_knobs(
+                [k for k in INTERVENTION_KNOBS if k.get("group") == "academic"],
+                interventions_dict,
+            )
 
         with st.container(border=True):
             st.markdown("#### 3. Experiential interventions")
-            exp_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("coding_skill_score", "certifications_count", "projects_count")]
-            for knob in exp_knobs:
-                k_col = knob["column"]
-                if k_col in target_slice.columns:
-                    label = knob["label"]
-                    min_v = float(knob["min"])
-                    max_v = float(knob["max"])
-                    step_v = float(knob["step"])
-                    def_v = float(knob["default"])
-                    invert = knob.get("invert", False)
-                    val = st.slider(
-                        label, min_v, max_v, def_v, step_v,
-                        key=f"sim_knob_{k_col}",
-                    )
-                    interventions_dict[k_col] = -val if invert else val
+            render_knobs(
+                [k for k in INTERVENTION_KNOBS if k.get("group") == "experiential"],
+                interventions_dict,
+            )
 
     with sim_right:
         sim_outcomes = simulator.simulate_policy_intervention(
@@ -1322,11 +1317,20 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     bench_df = raw_df.copy()
     if "placement_target" in bench_df.columns:
         y_bench = bench_df["placement_target"]
-    elif "placement_status" in bench_df.columns:
-        if bench_df["placement_status"].dtype == object:
-            y_bench = bench_df["placement_status"].map({"Not Placed": 0, "Placed": 1})
+    elif TARGET_COLUMN in bench_df.columns:
+        col = bench_df[TARGET_COLUMN]
+        # Check for a non-numeric dtype rather than `== object`: pandas may
+        # back string columns with pyarrow, which is not object dtype.
+        if pd.api.types.is_numeric_dtype(col):
+            y_bench = col
         else:
-            y_bench = bench_df["placement_status"]
+            y_bench = col.map(TARGET_MAP)
+            if y_bench.isnull().any():
+                raise ValueError(
+                    f"Unmapped {TARGET_COLUMN} values: "
+                    f"{col[y_bench.isnull()].unique().tolist()}"
+                )
+        y_bench = y_bench.astype(int)
     else:
         y_bench = pd.Series(0, index=bench_df.index)
 
@@ -1439,15 +1443,32 @@ bench_expander = st.expander(
     ":material/query_stats: Multi-model benchmark comparison matrix & performance validation",
     expanded=False,
 )
-if bench_expander.open:
-  with bench_expander:
+with bench_expander:
     st.markdown("### Formal multi-model benchmark comparison matrix")
     st.caption(
         "Compare Logistic Regression, Random Forest, and XGBoost "
         "across accuracy, ROC-AUC, precision, recall, F1, and latency."
     )
 
-    try:
+    # Gated behind an explicit toggle rather than the expander's own open
+    # state: toggling an expander is client-side only and never reruns the
+    # script, so an `expander.open` check stays False forever and the panel
+    # renders empty. A checkbox does trigger a rerun.
+    run_benchmark = st.checkbox(
+        "Run benchmark evaluation",
+        key="run_benchmark",
+        help="Evaluates all three models with a held-out split and 5-fold CV.",
+    )
+
+    if not run_benchmark:
+        st.info(
+            "Tick **Run benchmark evaluation** to compute the comparison "
+            "matrix. Results are cached after the first run.",
+            icon=":material/info:",
+        )
+
+    if run_benchmark:
+      try:
         bench_data = compute_benchmark_suite(len(raw_df))
         comparison_matrix = bench_data["comparison_matrix"]
         detailed_metrics = bench_data["detailed_metrics"]
@@ -1553,7 +1574,7 @@ if bench_expander.open:
                 fig_feat.update_layout(layout_feat)
                 st.plotly_chart(fig_feat, use_container_width=True)
 
-    except Exception as bench_err:
+      except Exception as bench_err:
         st.warning(
             f":material/warning: Could not generate benchmark metrics: {bench_err}"
         )

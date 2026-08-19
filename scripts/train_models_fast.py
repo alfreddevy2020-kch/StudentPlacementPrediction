@@ -1,5 +1,7 @@
 """
-Quick model trainer for Random Forest and XGBoost on the 80k dataset.
+Quick model trainer for Random Forest and XGBoost.
+Reads whatever preprocessing.py last wrote to data/processed/, so it stays
+correct across dataset changes.
 Produces:
   - part2/models/random_forest_best.joblib
   - part3/models/xgboost_best.joblib
@@ -21,14 +23,14 @@ TRAIN_PATH = "data/processed/train_processed.csv"
 TEST_PATH = "data/processed/test_processed.csv"
 WEIGHTS_PATH = "data/processed/class_weights.csv"
 
-print("=" * 60)
-print("Training Models on 80,000 Samples × 50 Features")
-print("=" * 60)
-
 print("\n[1] Loading preprocessed data ...")
 train_df = pd.read_csv(TRAIN_PATH)
 test_df = pd.read_csv(TEST_PATH)
 weights_df = pd.read_csv(WEIGHTS_PATH)
+
+print("=" * 60)
+print(f"Training Models on {len(train_df):,} Samples x {train_df.shape[1] - 1} Features")
+print("=" * 60)
 
 TARGET = "placement_status"
 X_train = train_df.drop(columns=[TARGET]).values

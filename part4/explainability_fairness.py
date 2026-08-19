@@ -4,7 +4,8 @@ Part 4 — Explainability & Bias/Fairness
 Role 4 deliverables:
   1. SHAP values — global summary + local waterfall for individual students
   2. Probability calibration — Platt (sigmoid) and isotonic vs raw XGBoost scores
-  3. Bias/fairness audit — group-wise metrics across gender and extracurricular activity
+  3. Bias/fairness audit — group-wise metrics across placement training and
+     extracurricular activity (this dataset has no demographic attributes)
   4. Mitigation recommendations in a text report
 
 Run after:
@@ -71,6 +72,12 @@ plt.rcParams.update(
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+import sys
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from feature_engineering import load_raw_dataset, TARGET_COLUMN, TARGET_MAP
+
 MODELS_DIR = REPO_ROOT / "part4" / "models"
 RESULTS_DIR = REPO_ROOT / "part4" / "explainability_results"
 
@@ -81,7 +88,13 @@ RAW_PATH = REPO_ROOT / "data" / "raw" / "student_placement.csv"
 XGB_JOBLIB = REPO_ROOT / "part3" / "models" / "xgboost_best.joblib"
 XGB_JSON = REPO_ROOT / "part3" / "models" / "xgboost_best.json"
 
-SENSITIVE_COLUMNS = ["gender", "branch", "college_tier", "volunteer_experience"]
+# This dataset carries no protected demographic attributes (no gender,
+# branch or college tier), so the audit runs on the equity axes it does
+# have: whether the student received institutional placement training, and
+# whether they participated in extracurriculars. Access to training is a
+# legitimate fairness concern in its own right - a model that penalises
+# students the institution never trained would entrench that gap.
+SENSITIVE_COLUMNS = ["placement_training", "extracurricular_activities"]
 THRESHOLD = 0.5
 
 
@@ -125,9 +138,11 @@ def load_data():
             "Raw dataset not found. Run download_dataset.py first."
         )
 
-    raw_df = pd.read_csv(RAW_PATH).drop(columns=["student_id", "salary_package_lpa"])
-    X_raw = raw_df.drop(columns=["placement_status"])
-    y_raw = raw_df["placement_status"]
+    # load_raw_dataset() applies the canonical snake_case renaming, matching
+    # what preprocessing.py fit the model on.
+    raw_df = load_raw_dataset(RAW_PATH).drop(columns=["student_id"])
+    X_raw = raw_df.drop(columns=[TARGET_COLUMN])
+    y_raw = raw_df[TARGET_COLUMN].map(TARGET_MAP).astype(int)
 
     _, X_test_raw, _, y_test_raw = train_test_split(
         X_raw,
@@ -432,19 +447,17 @@ def run_fairness_audit(model, X_test, y_test, X_test_raw):
 
 def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     """Write a human-readable fairness + explainability report with mitigations."""
-    gender_df = fairness_df[fairness_df["sensitive_attribute"] == "gender"]
-    vol_df = fairness_df[fairness_df["sensitive_attribute"] == "volunteer_experience"]
+    def fnr_gap(attribute: str) -> float:
+        """Max-minus-min false-negative-rate spread across one attribute's groups."""
+        subset = fairness_df[fairness_df["sensitive_attribute"] == attribute]
+        if len(subset) < 2:
+            return 0.0
+        return (
+            subset["false_negative_rate"].max() - subset["false_negative_rate"].min()
+        )
 
-    gender_fnr_gap = (
-        gender_df["false_negative_rate"].max() - gender_df["false_negative_rate"].min()
-        if len(gender_df) > 1
-        else 0.0
-    )
-    vol_fnr_gap = (
-        vol_df["false_negative_rate"].max() - vol_df["false_negative_rate"].min()
-        if len(vol_df) > 1
-        else 0.0
-    )
+    training_fnr_gap = fnr_gap("placement_training")
+    extra_fnr_gap = fnr_gap("extracurricular_activities")
 
     best_cal = cal_metrics.loc[cal_metrics["selected"], "method"].iloc[0]
     top_shap = mean_abs_shap.head(5)
@@ -492,7 +505,13 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
             "",
             "3. BIAS / FAIRNESS AUDIT",
             "-" * 40,
-            "Sensitive attributes audited: gender, branch, college_tier, volunteer_experience",
+            "Sensitive attributes audited: placement_training, extracurricular_activities",
+            "",
+            "Note: this dataset contains no protected demographic attributes",
+            "(gender, branch, college tier). The audit therefore measures",
+            "equity of access to institutional support rather than demographic",
+            "parity. A production deployment on real student records should",
+            "re-run this audit against actual demographic fields.",
             "",
             "Group-wise false negative rates (FNR):",
         ]
@@ -508,22 +527,26 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     lines.extend(
         [
             "",
-            f"  Gender FNR gap (max − min):    {gender_fnr_gap:.4f}",
-            f"  Volunteer Exp FNR gap:         {vol_fnr_gap:.4f}",
+            f"  Placement-training FNR gap (max − min): {training_fnr_gap:.4f}",
+            f"  Extracurricular FNR gap:                {extra_fnr_gap:.4f}",
             "",
             "4. PROPOSED MITIGATIONS",
             "-" * 40,
         ]
     )
 
-    if gender_fnr_gap > 0.05 or vol_fnr_gap > 0.05:
+    if training_fnr_gap > 0.05 or extra_fnr_gap > 0.05:
         lines.extend(
             [
                 "  Detected meaningful FNR disparity across groups. Proposed mitigations:",
                 "  (a) Group-specific decision thresholds — lower threshold for groups",
                 "      with higher FNR so fewer placement-ready students are missed.",
-                "  (b) Re-sample / re-weight training data per demographic group.",
+                "  (b) Re-sample / re-weight training data per group.",
                 "  (c) Monitor FNR by group in production (Role 7 drift logging).",
+                "  (d) Treat a high FNR among untrained students as an access problem:",
+                "      widen placement-training enrolment rather than only retuning",
+                "      the model, since the disparity reflects who the institution",
+                "      supported, not who is capable.",
             ]
         )
     else:
@@ -531,7 +554,7 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
             [
                 "  No large FNR disparity detected between audited groups on this test set.",
                 "  Recommended production safeguards anyway:",
-                "  (a) Log predictions with demographic metadata for ongoing monitoring.",
+                "  (a) Log predictions with group metadata for ongoing monitoring.",
                 "  (b) Set alert if any group's FNR exceeds overall FNR by > 5 pp.",
                 "  (c) Re-audit after each model retrain (Role 7 trigger policy).",
             ]

@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from batch_predictor import BatchPredictor, HIGH_RISK_THRESHOLD, MODERATE_RISK_THRESHOLD
+from feature_engineering import FEATURE_RANGES
 
 
 # ── Default intervention levers ─────────────────────────────────────────────
@@ -21,53 +22,58 @@ from batch_predictor import BatchPredictor, HIGH_RISK_THRESHOLD, MODERATE_RISK_T
 
 INTERVENTION_KNOBS = [
     {
-        "column": "attendance_percentage",
-        "label": "Mandatory Attendance Boost (+%)",
+        "column": "aptitude_test_score",
+        "label": "Aptitude Coaching Programme (+points)",
         "min": 0.0,
         "max": 25.0,
         "step": 1.0,
         "default": 0.0,
+        "group": "academic",
     },
     {
-        "column": "backlogs",
-        "label": "Backlog Clearance Drive (-backlogs)",
+        "column": "cgpa",
+        "label": "Academic Remediation Drive (+CGPA)",
         "min": 0.0,
-        "max": 5.0,
-        "step": 1.0,
+        "max": 1.5,
+        "step": 0.1,
         "default": 0.0,
-        "invert": True,
+        "group": "academic",
     },
     {
-        "column": "aptitude_score",
-        "label": "Entrance Exam Coaching Boost (+points)",
+        "column": "soft_skills_rating",
+        "label": "Communication Workshop (+rating)",
         "min": 0.0,
-        "max": 30.0,
-        "step": 1.0,
+        "max": 1.5,
+        "step": 0.1,
         "default": 0.0,
+        "group": "academic",
     },
     {
-        "column": "coding_skill_score",
-        "label": "Technical Skill Workshop (+points)",
-        "min": 0.0,
-        "max": 30.0,
-        "step": 1.0,
-        "default": 0.0,
-    },
-    {
-        "column": "certifications_count",
-        "label": "Sponsored Certification Drive (+certs)",
-        "min": 0.0,
-        "max": 5.0,
-        "step": 1.0,
-        "default": 0.0,
-    },
-    {
-        "column": "projects_count",
+        "column": "projects",
         "label": "Capstone Project Workshop (+projects)",
         "min": 0.0,
         "max": 3.0,
         "step": 1.0,
         "default": 0.0,
+        "group": "experiential",
+    },
+    {
+        "column": "workshops_certifications",
+        "label": "Sponsored Certification Drive (+certs)",
+        "min": 0.0,
+        "max": 3.0,
+        "step": 1.0,
+        "default": 0.0,
+        "group": "experiential",
+    },
+    {
+        "column": "internships",
+        "label": "Industry Internship Placement (+internships)",
+        "min": 0.0,
+        "max": 2.0,
+        "step": 1.0,
+        "default": 0.0,
+        "group": "experiential",
     },
 ]
 
@@ -99,8 +105,8 @@ class CohortWhatIfSimulator:
         cohort_df : pd.DataFrame
             The student cohort to simulate on.
         interventions : dict, optional
-            {column_name: delta} mapping. Positive values boost the feature;
-            for 'backlogs', use negative values to clear.
+            {column_name: delta} mapping. Positive values boost the feature.
+            Deltas are clamped to the feature's observed training range.
 
         Returns
         -------
@@ -133,13 +139,13 @@ class CohortWhatIfSimulator:
                 if col in sim_df.columns and delta != 0:
                     if pd.api.types.is_numeric_dtype(sim_df[col]):
                         sim_df[col] = sim_df[col] + delta
-                        # Enforce logical bounds
-                        col_min = cohort_df[col].min()
-                        col_max = cohort_df[col].max()
-                        if col_min >= 0:
-                            sim_df[col] = np.maximum(0.0, sim_df[col])
-                        if col_max <= 100.0 and col_max > 10.0:
-                            sim_df[col] = np.minimum(100.0, sim_df[col])
+                        # Clamp to the observed training range. Pushing a
+                        # feature past what the model was trained on produces
+                        # confident nonsense, so an intervention can only
+                        # move students to the top of the real range.
+                        lo, hi = FEATURE_RANGES.get(col, (None, None))
+                        if lo is not None:
+                            sim_df[col] = np.clip(sim_df[col], lo, hi)
 
         # 3. Post-Intervention Predictions
         sim_probs = self.predict_probabilities(sim_df)
@@ -196,8 +202,8 @@ class CohortWhatIfSimulator:
             "newly_shortlistable": (base_placed == 0) & (sim_placed == 1),
         }
 
-        # Include department/branch if available
-        for group_col in ["branch", "gender"]:
+        # Include cohort segmentation columns if available
+        for group_col in ["placement_training", "extracurricular_activities"]:
             if group_col in cohort_df.columns:
                 trans_dict[group_col] = cohort_df[group_col].values
 

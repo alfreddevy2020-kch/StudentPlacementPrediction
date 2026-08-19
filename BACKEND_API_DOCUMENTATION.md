@@ -60,16 +60,17 @@ Streamlit Frontend  (frontend/app.py)
         ▼
 FastAPI  (api/main.py)
         │
-        │  Pydantic validates 15 raw fields
+        │  Pydantic validates 10 raw fields
         ▼
 StudentInput  (api/schemas.py)
         │
-        │  _input_to_dataframe()  →  pd.DataFrame (1 row × 15 named columns)
+        │  _input_to_dataframe()  →  pd.DataFrame (1 row × 10 raw columns)
+        │  engineer_features()    →  + 21 derived columns  (31 total)
         ▼
 preprocessor.joblib  (ColumnTransformer)
-        │  StandardScaler   →  13 numerical features  (z-scored)
+        │  StandardScaler   →  29 numerical features  (z-scored)
         │  OneHotEncoder    →   2 categorical features (4 dummy columns)
-        │  Output: NumPy array (1 × 17)
+        │  Output: NumPy array (1 × 33)
         ▼
 RandomForestClassifier  (random_forest_best.joblib)
         │  .predict()       →  label ∈ {0, 1}
@@ -107,34 +108,33 @@ Defines the full API contract using Pydantic v2 models.
 
 #### `StudentInput` — POST request body
 
-15 raw student features expected by `POST /api/v1/predict`.
-`student_id` and `salary_package_lpa` are **not accepted** (the latter
-would cause data leakage).
+10 raw student features expected by `POST /api/v1/predict`.
+`student_id` and `placement_status` are **not accepted** (the latter is the
+target itself).
 
-**Numerical fields (13) — validated with `ge` / `le` bounds:**
+**Numerical fields (8) — validated with `ge` / `le` bounds:**
 
-| Field | Type | Range | Description |
-|---|---|---|---|
-| `ssc_percentage` | `float` | 0–100 | Secondary school (10th) percentage |
-| `hsc_percentage` | `float` | 0–100 | Higher secondary (12th) percentage |
-| `degree_percentage` | `float` | 0–100 | Undergraduate degree percentage |
-| `cgpa` | `float` | 0–10 | College CGPA on a 10-point scale |
-| `attendance_percentage` | `float` | 0–100 | College attendance percentage |
-| `entrance_exam_score` | `float` | 0–100 | Entrance examination score |
-| `technical_skill_score` | `float` | 0–100 | Technical / coding skills score |
-| `soft_skill_score` | `float` | 0–100 | Soft skills assessment score |
-| `backlogs` | `int` | ≥ 0 | Active academic backlogs |
-| `certifications` | `int` | ≥ 0 | Professional certifications earned |
-| `live_projects` | `int` | ≥ 0 | Live / capstone projects completed |
-| `internship_count` | `int` | ≥ 0 | Internships completed |
-| `work_experience_months` | `int` | ≥ 0 | Prior work experience in months |
+Accepted bounds are the widest sensible range per field. The model's actual
+training range is narrower (the "Trained on" column); values outside it
+validate successfully but are extrapolation.
+
+| Field | Type | Accepted | Trained on | Description |
+|---|---|---|---|---|
+| `cgpa` | `float` | 0–10 | 6.5–9.1 | College CGPA on a 10-point scale |
+| `ssc_marks` | `float` | 0–100 | 55–90 | Secondary school (class 10) percentage |
+| `hsc_marks` | `float` | 0–100 | 57–88 | Higher secondary (class 12) percentage |
+| `aptitude_test_score` | `float` | 0–100 | 60–90 | Aptitude / mock-test score |
+| `soft_skills_rating` | `float` | 0–5 | 3.0–4.8 | Soft-skills rating on a 5-point scale |
+| `internships` | `int` | 0–10 | 0–2 | Internships completed |
+| `projects` | `int` | 0–20 | 0–3 | Projects completed |
+| `workshops_certifications` | `int` | 0–20 | 0–3 | Workshops / certifications earned |
 
 **Categorical fields (2) — validated with `Literal`:**
 
 | Field | Type | Accepted values |
 |---|---|---|
-| `gender` | `str` | `"Male"`, `"Female"` |
 | `extracurricular_activities` | `str` | `"Yes"`, `"No"` |
+| `placement_training` | `str` | `"Yes"`, `"No"` |
 
 #### `PredictionResponse` — POST response body
 
@@ -176,18 +176,23 @@ BasePredictor  (ABC)
 
 **Key internals:**
 
+Defined once in `feature_engineering.py` and imported everywhere else —
+never redeclared locally.
+
 ```python
-NUMERICAL_FEATURES = [
-    "ssc_percentage", "hsc_percentage", "degree_percentage", "cgpa",
-    "entrance_exam_score", "technical_skill_score", "soft_skill_score",
-    "internship_count", "live_projects", "work_experience_months",
-    "certifications", "attendance_percentage", "backlogs",
+RAW_NUMERICAL_FEATURES = [
+    "cgpa", "ssc_marks", "hsc_marks",
+    "aptitude_test_score", "soft_skills_rating",
+    "internships", "projects", "workshops_certifications",
 ]
 
-CATEGORICAL_FEATURES = ["gender", "extracurricular_activities"]
+RAW_CATEGORICAL_FEATURES = ["extracurricular_activities", "placement_training"]
 
-ALL_FEATURES = NUMERICAL_FEATURES + CATEGORICAL_FEATURES  # 15 total
+ALL_RAW_FEATURES = RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES  # 10 total
 ```
+
+`engineer_features()` then adds 21 derived columns, giving the 29 numerical
++ 2 categorical (33 after one-hot) that the fitted preprocessor expects.
 
 **`RandomForestPredictor.load()`** — called once at startup:
 ```python
@@ -258,27 +263,23 @@ Liveness probe. Confirms both artifacts are loaded.
 
 ### `POST /api/v1/predict`
 
-Main inference endpoint. Accepts 15 raw student features and returns a
+Main inference endpoint. Accepts 10 raw student features and returns a
 placement prediction.
 
 **Example request body:**
 ```json
 {
-  "ssc_percentage": 75.5,
-  "hsc_percentage": 78.0,
-  "degree_percentage": 72.0,
-  "cgpa": 8.2,
-  "attendance_percentage": 90.0,
-  "backlogs": 0,
-  "entrance_exam_score": 85.0,
-  "technical_skill_score": 80.0,
-  "soft_skill_score": 75.0,
-  "certifications": 3,
-  "live_projects": 1,
-  "internship_count": 2,
-  "work_experience_months": 6,
-  "gender": "Male",
-  "extracurricular_activities": "Yes"
+  "model": "random_forest",
+  "cgpa": 7.7,
+  "ssc_marks": 70.0,
+  "hsc_marks": 74.0,
+  "aptitude_test_score": 80.0,
+  "soft_skills_rating": 4.4,
+  "internships": 1,
+  "projects": 2,
+  "workshops_certifications": 1,
+  "extracurricular_activities": "Yes",
+  "placement_training": "Yes"
 }
 ```
 
@@ -400,31 +401,27 @@ http://localhost:8000/redoc
 
 ### `POST /api/v1/predict` — curl (PowerShell)
 
-**Strong candidate (expected: Placed):**
+**Strong candidate (expected: Placed, ~0.93):**
 ```powershell
 curl -X POST http://localhost:8000/api/v1/predict `
   -H "Content-Type: application/json" `
   -d '{
-    "ssc_percentage":85.0,"hsc_percentage":88.0,"degree_percentage":80.0,
-    "cgpa":9.0,"attendance_percentage":95.0,"backlogs":0,
-    "entrance_exam_score":90.0,"technical_skill_score":88.0,
-    "soft_skill_score":82.0,"certifications":4,"live_projects":3,
-    "internship_count":2,"work_experience_months":6,
-    "gender":"Male","extracurricular_activities":"Yes"
+    "cgpa":8.9,"ssc_marks":78.0,"hsc_marks":82.0,
+    "aptitude_test_score":90.0,"soft_skills_rating":4.6,
+    "internships":2,"projects":3,"workshops_certifications":3,
+    "extracurricular_activities":"Yes","placement_training":"Yes"
   }'
 ```
 
-**Weak candidate (expected: Not Placed):**
+**Weak candidate (expected: Not Placed, ~0.01):**
 ```powershell
 curl -X POST http://localhost:8000/api/v1/predict `
   -H "Content-Type: application/json" `
   -d '{
-    "ssc_percentage":45.0,"hsc_percentage":48.0,"degree_percentage":42.0,
-    "cgpa":4.5,"attendance_percentage":60.0,"backlogs":5,
-    "entrance_exam_score":35.0,"technical_skill_score":30.0,
-    "soft_skill_score":28.0,"certifications":0,"live_projects":0,
-    "internship_count":0,"work_experience_months":0,
-    "gender":"Female","extracurricular_activities":"No"
+    "cgpa":6.6,"ssc_marks":56.0,"hsc_marks":58.0,
+    "aptitude_test_score":61.0,"soft_skills_rating":3.1,
+    "internships":0,"projects":0,"workshops_certifications":0,
+    "extracurricular_activities":"No","placement_training":"No"
   }'
 ```
 
@@ -443,14 +440,11 @@ curl -X POST http://localhost:8000/api/v1/predict `
 import requests
 
 payload = {
-    "ssc_percentage": 75.5, "hsc_percentage": 78.0,
-    "degree_percentage": 72.0, "cgpa": 8.2,
-    "attendance_percentage": 90.0, "backlogs": 0,
-    "entrance_exam_score": 85.0, "technical_skill_score": 80.0,
-    "soft_skill_score": 75.0, "certifications": 3,
-    "live_projects": 1, "internship_count": 2,
-    "work_experience_months": 6,
-    "gender": "Male", "extracurricular_activities": "Yes",
+    "model": "random_forest",
+    "cgpa": 7.7, "ssc_marks": 70.0, "hsc_marks": 74.0,
+    "aptitude_test_score": 80.0, "soft_skills_rating": 4.4,
+    "internships": 1, "projects": 2, "workshops_certifications": 1,
+    "extracurricular_activities": "Yes", "placement_training": "Yes",
 }
 
 r = requests.post("http://localhost:8000/api/v1/predict", json=payload)
@@ -464,32 +458,20 @@ print(r.json())
 The `preprocessor.joblib` artifact is a fitted scikit-learn `ColumnTransformer`
 produced by `preprocessing.py` during the training pipeline.
 
+The transformer is fitted on the **engineered** frame, not the raw request
+body: `engineer_features()` expands the 10 raw fields into 29 numerical
+columns before the `ColumnTransformer` runs.
+
 | Branch | Transformer | Input columns | Output columns |
 |---|---|---|---|
-| `numerical` | `StandardScaler` | 13 numerical features | 13 z-scored floats |
-| `categorical` | `OneHotEncoder` | `gender`, `extracurricular_activities` | 4 dummy columns |
-| **Total** | | **15** raw features | **17** processed features |
+| `numerical` | `StandardScaler` | 29 numerical features (8 raw + 21 engineered) | 29 z-scored floats |
+| `categorical` | `OneHotEncoder` | `extracurricular_activities`, `placement_training` | 4 dummy columns |
+| **Total** | | **10** raw fields → 31 engineered | **33** processed features |
 
-**Output column names (in order):**
-```
-numerical__ssc_percentage
-numerical__hsc_percentage
-numerical__degree_percentage
-numerical__cgpa
-numerical__entrance_exam_score
-numerical__technical_skill_score
-numerical__soft_skill_score
-numerical__internship_count
-numerical__live_projects
-numerical__work_experience_months
-numerical__certifications
-numerical__attendance_percentage
-numerical__backlogs
-categorical__gender_Female
-categorical__gender_Male
-categorical__extracurricular_activities_No
-categorical__extracurricular_activities_Yes
-```
+**Output column names:** the 8 raw numerical features, then the 21 in
+`ENGINEERED_NUMERICAL_FEATURES` (each prefixed `numerical__`), then the
+four `categorical__*_No` / `categorical__*_Yes` dummies. The authoritative
+list is `preprocessor.get_feature_names_out()`.
 
 The `ColumnTransformer` selects columns **by name**, so the column order
 in the one-row inference DataFrame does not need to match the transformer's

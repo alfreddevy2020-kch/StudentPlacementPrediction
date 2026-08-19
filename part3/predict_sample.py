@@ -32,36 +32,23 @@ preprocessor = joblib.load(preprocessor_path)
 print(f"  Loaded successfully from {preprocessor_path}.")
 
 # ============================================================
-# 2. DEFINE SAMPLE INPUT (19 Numerical + 4 Categorical Raw Features)
+# 2. DEFINE SAMPLE INPUT (8 Numerical + 2 Categorical Raw Features)
 # ============================================================
 
 sample_input = pd.DataFrame([{
-    # Numerical features (19)
-    "age":                         21,
+    # Numerical features (8)
     "cgpa":                        8.1,
-    "attendance_percentage":       88.0,
-    "backlogs":                    0,
-    "coding_skill_score":          82.0,
-    "aptitude_score":              78.0,
-    "communication_skill_score":   79.0,
-    "logical_reasoning_score":     76.0,
-    "mock_interview_score":        75.0,
-    "internships_count":           2,
-    "projects_count":              3,
-    "certifications_count":        4,
-    "hackathons_participated":     2,
-    "github_repos":                12,
-    "linkedin_connections":        250,
-    "extracurricular_score":       70.0,
-    "leadership_score":            65.0,
-    "sleep_hours":                 7.0,
-    "study_hours_per_day":         5.0,
+    "ssc_marks":                   82.0,
+    "hsc_marks":                   85.0,
+    "aptitude_test_score":         88.0,
+    "soft_skills_rating":          4.6,
+    "internships":                 2,
+    "projects":                    3,
+    "workshops_certifications":    2,
 
-    # Categorical features (4)
-    "gender":                      "Male",
-    "branch":                      "CSE",
-    "college_tier":                "Tier 1",
-    "volunteer_experience":        "Yes",
+    # Categorical features (2)
+    "extracurricular_activities":  "Yes",
+    "placement_training":          "Yes",
 }])
 
 print("\nSample Input:")

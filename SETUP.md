@@ -197,7 +197,8 @@ venv/bin/python preprocessing.py
 ### What it does
 
 1. Loads `data/raw/student_placement.csv` (5,000 rows × 18 columns)
-2. Drops `student_id` (identifier only) and `salary_package_lpa` (target leakage)
+2. Drops `student_id` (identifier only); this dataset has no post-outcome
+   fields, so the text target is the only other column removed
 3. Separates 15 features from target `placement_status`
 4. Splits 80/20 stratified train/test (random_state=42)
 5. Fits `ColumnTransformer` on training data only:
@@ -540,7 +541,7 @@ venv\Scripts\python.exe -m uvicorn api.main:app --reload --port 8000
 
 # Test endpoints
 curl http://localhost:8000/health
-curl -X POST http://localhost:8000/api/v1/predict -H "Content-Type: application/json" -d "{\"ssc_percentage\":75.5,\"hsc_percentage\":78.0,\"degree_percentage\":72.0,\"cgpa\":8.2,\"attendance_percentage\":90.0,\"backlogs\":0,\"entrance_exam_score\":85.0,\"technical_skill_score\":80.0,\"soft_skill_score\":75.0,\"certifications\":3,\"live_projects\":1,\"internship_count\":2,\"work_experience_months\":6,\"gender\":\"Male\",\"extracurricular_activities\":\"Yes\"}"
+curl -X POST http://localhost:8000/api/v1/predict -H "Content-Type: application/json" -d "{\"cgpa\":7.7,\"ssc_marks\":70.0,\"hsc_marks\":74.0,\"aptitude_test_score\":80.0,\"soft_skills_rating\":4.4,\"internships\":1,\"projects\":2,\"workshops_certifications\":1,\"extracurricular_activities\":\"Yes\",\"placement_training\":\"Yes\"}"
 ```
 
 **Key files you own:** everything in `api/`, `BACKEND_API_DOCUMENTATION.md`, `pyrightconfig.json`

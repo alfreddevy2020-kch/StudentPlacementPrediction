@@ -39,8 +39,9 @@ Client → FastAPI (Pydantic validation)
   without changing the API contract.
 
 ## Excluded Fields
-`student_id` and `salary_package_lpa` are not accepted by the API.
-`salary_package_lpa` is known only after placement and would cause data leakage.
+`student_id` and `placement_status` are not accepted by the API.
+`student_id` is an identifier with no predictive content, and
+`placement_status` is the target itself.
 
 ## Endpoints
 | Method | Path | Description |

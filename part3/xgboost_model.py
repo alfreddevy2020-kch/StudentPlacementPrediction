@@ -507,29 +507,16 @@ print("[11] Sample Prediction ...")
 print("-" * 50)
 
 sample_input = pd.DataFrame([{
-    "age":                         21,
     "cgpa":                        8.1,
-    "attendance_percentage":       88.0,
-    "backlogs":                    0,
-    "coding_skill_score":          82.0,
-    "aptitude_score":              78.0,
-    "communication_skill_score":   79.0,
-    "logical_reasoning_score":     76.0,
-    "mock_interview_score":        75.0,
-    "internships_count":           2,
-    "projects_count":              3,
-    "certifications_count":        4,
-    "hackathons_participated":     2,
-    "github_repos":                12,
-    "linkedin_connections":        250,
-    "extracurricular_score":       70.0,
-    "leadership_score":            65.0,
-    "sleep_hours":                 7.0,
-    "study_hours_per_day":         5.0,
-    "gender":                      "Male",
-    "branch":                      "CSE",
-    "college_tier":                "Tier 1",
-    "volunteer_experience":        "Yes",
+    "ssc_marks":                   82.0,
+    "hsc_marks":                   85.0,
+    "aptitude_test_score":         88.0,
+    "soft_skills_rating":          4.6,
+    "internships":                 2,
+    "projects":                    3,
+    "workshops_certifications":    2,
+    "extracurricular_activities":  "Yes",
+    "placement_training":          "Yes",
 }])
 
 if preprocessor is not None:
@@ -548,7 +535,7 @@ elif sample_proba[1] >= 0.5:
 else:
     risk = "Low Probability of Placement (High Risk)"
 
-print(f"\n  Input: ssc=82.5, hsc=79.2, degree=76.8, cgpa=8.1, ...")
+print(f"\n  Input: cgpa=8.1, ssc=82.0, hsc=85.0, aptitude=88.0, ...")
 print(f"  Placement Status : {pred_status}")
 print(f"  Placement Label  : {pred_label}")
 print(f"  P(Placed)        : {sample_proba[1]:.4f}")

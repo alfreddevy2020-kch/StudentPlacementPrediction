@@ -5,7 +5,7 @@ import kagglehub
 # 1. Download latest version of the dataset
 print("Downloading dataset from Kaggle via kagglehub...")
 downloaded_path = kagglehub.dataset_download(
-    "sehaj1104/student-placement-prediction-dataset-2026"
+    "ruchikakumbhar/placement-prediction-dataset"
 )
 print("Path to downloaded files:", downloaded_path)
 

@@ -23,35 +23,43 @@ The model can help identify students who may require additional training or plac
 
 ## 📊 Dataset
 
-The dataset contains **5,000 student records** and initially contains 18 columns.
+Source: **`ruchikakumbhar/placement-prediction-dataset`** on Kaggle —
+**10,000 student records**, 12 columns. See [SCHEMA.md](SCHEMA.md) for why
+this dataset was chosen over the alternatives.
 
 ### Features
 
-| Feature | Description |
-|---|---|
-| gender | Student gender |
-| ssc_percentage | Secondary school percentage |
-| hsc_percentage | Higher secondary percentage |
-| degree_percentage | Degree percentage |
-| cgpa | College CGPA |
-| entrance_exam_score | Entrance examination score |
-| technical_skill_score | Technical skill assessment score |
-| soft_skill_score | Soft skill assessment score |
-| internship_count | Number of internships |
-| live_projects | Number of live projects |
-| work_experience_months | Previous work experience |
-| certifications | Number of certifications |
-| attendance_percentage | Attendance percentage |
-| backlogs | Number of academic backlogs |
-| extracurricular_activities | Participation in extracurricular activities |
-| placement_status | Placement outcome |
+Column names are normalised to snake_case on load by
+`feature_engineering.normalize_columns()`; the raw CSV headers are
+mixed-case (e.g. `Workshops/Certifications`).
+
+| Feature | Type | Range | Description |
+|---|---|---|---|
+| cgpa | float | 6.5–9.1 | College CGPA (10-point scale) |
+| ssc_marks | int | 55–90 | Secondary school (class 10) percentage |
+| hsc_marks | int | 57–88 | Higher secondary (class 12) percentage |
+| aptitude_test_score | int | 60–90 | Aptitude / mock-test score |
+| soft_skills_rating | float | 3.0–4.8 | Soft-skills rating (5-point scale) |
+| internships | int | 0–2 | Number of internships completed |
+| projects | int | 0–3 | Number of projects completed |
+| workshops_certifications | int | 0–3 | Workshops and certifications earned |
+| extracurricular_activities | Yes/No | — | Participation in extracurriculars |
+| placement_training | Yes/No | — | Received institutional placement training |
+| placement_status | Placed/NotPlaced | — | **Target** — placement outcome |
 
 ### Removed Columns
 
-The following columns were removed during preprocessing:
+- `student_id` — identifier only, no predictive content
 
-- `student_id` — identifier only
-- `salary_package_lpa` — removed to prevent data leakage because salary is known after placement
+This dataset ships no post-outcome fields (no salary/package column), so
+the target itself is the only leakage source to drop.
+
+### Not present in this dataset
+
+`backlogs`, `attendance`, department/branch, and demographic attributes
+(gender, college tier) are **absent from the source data** and are
+therefore not modelled rather than fabricated. See [SCHEMA.md](SCHEMA.md)
+for the consequences on department reporting and the Part 4 bias audit.
 
 ---
 

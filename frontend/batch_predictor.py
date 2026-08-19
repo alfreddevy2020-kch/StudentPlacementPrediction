@@ -18,6 +18,7 @@ if str(BASE_DIR) not in sys.path:
 
 from feature_engineering import (
     engineer_features,
+    load_raw_dataset,
     RAW_NUMERICAL_FEATURES,
     RAW_CATEGORICAL_FEATURES,
     ALL_NUMERICAL_FEATURES,
@@ -186,8 +187,5 @@ class BatchPredictor:
 
     @staticmethod
     def load_dataset() -> pd.DataFrame:
-        """Load the raw placement dataset from disk."""
-        dataset_path = BASE_DIR / "data" / "raw" / "student_placement.csv"
-        if not dataset_path.exists():
-            raise FileNotFoundError(f"Dataset not found: {dataset_path}")
-        return pd.read_csv(dataset_path)
+        """Load the raw placement dataset with canonical snake_case columns."""
+        return load_raw_dataset(BASE_DIR / "data" / "raw" / "student_placement.csv")

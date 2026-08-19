@@ -132,11 +132,11 @@ def health_check() -> HealthResponse:
     response_model=PredictionResponse,
     summary="Predict Student Placement",
     description=(
-        "Accepts 15 raw student features and a model selection, applies the "
+        "Accepts 10 raw student features and a model selection, applies the "
         "fitted preprocessor (StandardScaler + OneHotEncoder), and returns a "
         "placement prediction from the selected model.\n\n"
         "**Available models:** `logistic_regression`, `random_forest`, `xgboost`.\n\n"
-        "**Fields NOT accepted:** `student_id`, `salary_package_lpa`."
+        "**Fields NOT accepted:** `student_id`, `placement_status`."
     ),
     tags=["Inference"],
     responses={

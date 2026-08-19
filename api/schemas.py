@@ -29,9 +29,13 @@ class ModelName(str, Enum):
 
 class StudentInput(BaseModel):
     """
-    23 raw student features expected by the prediction endpoint.
+    10 raw student features expected by the prediction endpoint.
 
-    **Do not include** `student_id` or `salary_package_lpa`.
+    **Do not include** `student_id` or `placement_status`.
+
+    Bounds are the widest sensible range for each field. The model's actual
+    training range is narrower (see FEATURE_RANGES in feature_engineering.py);
+    values outside it are accepted but are extrapolation.
     """
 
     # ── Model Selection ────────────────────────────────────────────────────
@@ -42,59 +46,41 @@ class StudentInput(BaseModel):
     )
 
     # ── Numerical ──────────────────────────────────────────────────────────
-    age: int = Field(..., ge=15, le=60, examples=[21])
-    cgpa: float = Field(..., ge=0.0, le=10.0, examples=[8.2])
-    attendance_percentage: float = Field(..., ge=0.0, le=100.0, examples=[90.0])
-    backlogs: int = Field(..., ge=0, examples=[0])
-    coding_skill_score: float = Field(..., ge=0.0, le=100.0, examples=[80.0])
-    aptitude_score: float = Field(..., ge=0.0, le=100.0, examples=[75.0])
-    communication_skill_score: float = Field(..., ge=0.0, le=100.0, examples=[78.0])
-    logical_reasoning_score: float = Field(..., ge=0.0, le=100.0, examples=[72.0])
-    mock_interview_score: float = Field(..., ge=0.0, le=100.0, examples=[70.0])
-    internships_count: int = Field(..., ge=0, examples=[2])
-    projects_count: int = Field(..., ge=0, examples=[1])
-    certifications_count: int = Field(..., ge=0, examples=[3])
-    hackathons_participated: int = Field(..., ge=0, examples=[1])
-    github_repos: int = Field(..., ge=0, examples=[5])
-    linkedin_connections: int = Field(..., ge=0, examples=[150])
-    extracurricular_score: float = Field(..., ge=0.0, le=100.0, examples=[60.0])
-    leadership_score: float = Field(..., ge=0.0, le=100.0, examples=[55.0])
-    sleep_hours: float = Field(..., ge=0.0, le=24.0, examples=[7.0])
-    study_hours_per_day: float = Field(..., ge=0.0, le=24.0, examples=[4.0])
+    cgpa: float = Field(..., ge=0.0, le=10.0, examples=[7.7],
+                        description="Cumulative GPA on a 10-point scale. Trained on 6.5-9.1.")
+    ssc_marks: float = Field(..., ge=0.0, le=100.0, examples=[70.0],
+                             description="Class 10 (SSC) percentage. Trained on 55-90.")
+    hsc_marks: float = Field(..., ge=0.0, le=100.0, examples=[74.0],
+                             description="Class 12 (HSC) percentage. Trained on 57-88.")
+    aptitude_test_score: float = Field(..., ge=0.0, le=100.0, examples=[80.0],
+                                       description="Aptitude/mock-test score. Trained on 60-90.")
+    soft_skills_rating: float = Field(..., ge=0.0, le=5.0, examples=[4.4],
+                                      description="Soft-skills rating on a 5-point scale. Trained on 3.0-4.8.")
+    internships: int = Field(..., ge=0, le=10, examples=[1],
+                             description="Completed internships. Trained on 0-2.")
+    projects: int = Field(..., ge=0, le=20, examples=[2],
+                          description="Completed projects. Trained on 0-3.")
+    workshops_certifications: int = Field(..., ge=0, le=20, examples=[1],
+                                          description="Workshops/certifications earned. Trained on 0-3.")
 
     # ── Categorical ─────────────────────────────────────────────────────────
-    gender: Literal["Male", "Female"]
-    branch: str
-    college_tier: str
-    volunteer_experience: Literal["Yes", "No"]
+    extracurricular_activities: Literal["Yes", "No"]
+    placement_training: Literal["Yes", "No"]
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "model": "random_forest",
-                "age": 21,
-                "cgpa": 8.2,
-                "attendance_percentage": 90.0,
-                "backlogs": 0,
-                "coding_skill_score": 80.0,
-                "aptitude_score": 75.0,
-                "communication_skill_score": 78.0,
-                "logical_reasoning_score": 72.0,
-                "mock_interview_score": 70.0,
-                "internships_count": 2,
-                "projects_count": 1,
-                "certifications_count": 3,
-                "hackathons_participated": 1,
-                "github_repos": 5,
-                "linkedin_connections": 150,
-                "extracurricular_score": 60.0,
-                "leadership_score": 55.0,
-                "sleep_hours": 7.0,
-                "study_hours_per_day": 4.0,
-                "gender": "Male",
-                "branch": "CSE",
-                "college_tier": "Tier 1",
-                "volunteer_experience": "Yes",
+                "cgpa": 7.7,
+                "ssc_marks": 70.0,
+                "hsc_marks": 74.0,
+                "aptitude_test_score": 80.0,
+                "soft_skills_rating": 4.4,
+                "internships": 1,
+                "projects": 2,
+                "workshops_certifications": 1,
+                "extracurricular_activities": "Yes",
+                "placement_training": "Yes",
             }
         }
     }
