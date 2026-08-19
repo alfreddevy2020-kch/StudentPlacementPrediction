@@ -11,7 +11,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from imblearn.over_sampling import SMOTE
 
-from feature_engineering import engineer_features, RAW_CATEGORICAL_FEATURES
+from feature_engineering import engineer_features, fit_normalization_stats, RAW_CATEGORICAL_FEATURES
 
 
 # ============================================================
@@ -103,6 +103,13 @@ print("\n" + "=" * 60)
 print("FEATURE ENGINEERING")
 print("=" * 60)
 
+
+# Freeze github_repos_max / linkedin_connections_max from the FULL training
+# dataset BEFORE engineering features, so every inference-time caller
+# (dashboard, API, simulator) reuses this exact constant instead of
+# recomputing its own batch-local max. See feature_engineering.py.
+norm_stats = fit_normalization_stats(df)
+print(f"Persisted normalization stats -> {norm_stats}")
 
 df = engineer_features(df)
 
