@@ -1,0 +1,14 @@
+# Normalise line endings for source and docs so diffs stay clean across
+# Windows and Linux checkouts.
+* text=auto eol=lf
+
+# Production bundles are content-addressed: manifest.json records a SHA-256
+# for each file and api/predictor.py verifies it at startup. Git must never
+# rewrite these bytes — a CRLF/LF conversion between a Windows commit and a
+# Linux CI checkout changes the hash and fails bundle verification.
+artifacts/production/** -text
+
+# Binary artifacts — never touch, never diff.
+*.joblib binary
+*.png binary
+*.db binary

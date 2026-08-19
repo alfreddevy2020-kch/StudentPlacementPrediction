@@ -15,6 +15,7 @@ These tests lock in the two properties that prevent a recurrence:
   2. Every production bundle ships its own checksummed copy.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -118,3 +119,27 @@ class TestBundlesAreSelfContained:
         entry = manifest.get("artifacts", {}).get("normalization_stats")
         assert entry, f"{model_key} manifest does not checksum its stats file"
         assert entry.get("sha256")
+
+    @pytest.mark.parametrize("model_key", sorted(MODEL_BUNDLES))
+    def test_checksum_matches_the_file_on_disk(self, model_key: str):
+        """Catch a stale manifest before CI does."""
+        bundle = MODEL_BUNDLES[model_key]
+        manifest = json.loads(bundle["manifest"].read_text(encoding="utf-8"))
+        expected = manifest["artifacts"]["normalization_stats"]["sha256"]
+        actual = hashlib.sha256(bundle["normalization_stats"].read_bytes()).hexdigest()
+        assert actual == expected, (
+            f"{model_key}: manifest checksum does not match the file. "
+            "Re-run scripts/package_model.py."
+        )
+
+    @pytest.mark.parametrize("model_key", sorted(MODEL_BUNDLES))
+    def test_stats_file_uses_lf_line_endings(self, model_key: str):
+        """CRLF would change the SHA-256 between a Windows commit and a Linux
+        CI checkout, so bundle verification would fail there but pass locally.
+        .gitattributes marks artifacts/production/** as -text to stop git
+        rewriting these bytes; this asserts the writer cooperates."""
+        raw = MODEL_BUNDLES[model_key]["normalization_stats"].read_bytes()
+        assert b"\r\n" not in raw, (
+            f"{model_key} normalization_stats.json contains CRLF. It is "
+            "checksummed, so its bytes must be identical on every platform."
+        )

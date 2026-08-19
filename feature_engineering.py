@@ -134,8 +134,13 @@ def fit_normalization_stats(df: pd.DataFrame) -> dict:
         "workshops_certifications_max": float(df["workshops_certifications"].max()),
     }
     NORM_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(NORM_STATS_PATH, "w") as f:
+    # newline="\n" is required, not cosmetic: this file is SHA-256'd into
+    # every production manifest. Python's text mode would emit CRLF on
+    # Windows, so the hash recorded at packaging time would not match the
+    # same file checked out on Linux CI.
+    with open(NORM_STATS_PATH, "w", encoding="utf-8", newline="\n") as f:
         json.dump(stats, f, indent=2)
+        f.write("\n")
     _load_normalization_stats.cache_clear()
     return stats
 

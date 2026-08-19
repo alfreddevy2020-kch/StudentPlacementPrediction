@@ -71,7 +71,8 @@ def main() -> int:
         }
 
         out_path = ARTIFACT_ROOT / model_key / "baseline_metrics.json"
-        with open(out_path, "w", encoding="utf-8") as f:
+        # newline="\n" keeps bundle files byte-identical across platforms.
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(metrics, f, indent=2)
             f.write("\n")
 

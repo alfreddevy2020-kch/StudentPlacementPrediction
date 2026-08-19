@@ -131,8 +131,11 @@ def package_model(
         },
     }
 
-    with open(dest_manifest, "w", encoding="utf-8") as f:
+    # newline="\n" keeps bundle files byte-identical across platforms — see
+    # the note in feature_engineering.fit_normalization_stats().
+    with open(dest_manifest, "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest_data, f, indent=2)
+        f.write("\n")
 
     print(f"\n[OK] Model successfully packaged: {model_name}")
     print(f"     Directory    : {target_dir}")
