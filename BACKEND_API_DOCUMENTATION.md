@@ -453,6 +453,28 @@ print(r.json())
 
 ---
 
+## Production bundle contents
+
+Each model under `artifacts/production/<model>/` is a self-contained,
+checksummed bundle. `verify_and_load_bundle()` validates all of it at startup
+and refuses to serve a model that fails any check.
+
+| File | Purpose | Checksummed in `manifest.json` |
+|---|---|---|
+| `model.joblib` | the classifier | yes |
+| `preprocessor.joblib` | fitted `ColumnTransformer` | yes |
+| `normalization_stats.json` | frozen scaling maxima for the count features | yes (`schema_version: 2`) |
+| `baseline_metrics.json` | reference distribution for `/api/v1/drift` | no |
+
+`normalization_stats.json` travels **with** the model rather than being read
+from `data/processed/` (which is gitignored). This keeps a served model
+pinned to the scale it was trained on and lets the API run correctly on a
+fresh clone with no data directory. `api/predictor.py` passes the per-bundle
+copy into `engineer_features(..., stats=...)` on every request.
+
+If you retrain, re-run `scripts/package_model.py` — otherwise the startup
+checksum verification rejects the bundle.
+
 ## Preprocessor Details
 
 The `preprocessor.joblib` artifact is a fitted scikit-learn `ColumnTransformer`

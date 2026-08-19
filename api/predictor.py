@@ -38,12 +38,13 @@ import pandas as pd
 from api.schemas import PredictionResponse, StudentInput
 from feature_engineering import (
     FEATURE_RANGES,
+    NORM_STATS_FILENAME,
     RAW_CATEGORICAL_FEATURES,
     RAW_NUMERICAL_FEATURES,
     engineer_features,
+    load_normalization_stats,
 )
 
-# Sample valid student record used for startup smoke-testing
 # Startup validation record, built from the midpoint of each feature's
 # observed training range so it cannot drift out of sync with the schema.
 # Raw only — engineer_features() is applied before the preprocessor sees it,
@@ -67,9 +68,14 @@ def _compute_sha256(filepath: Path) -> str:
     return hasher.hexdigest()
 
 
-def _input_to_dataframe(data: StudentInput) -> pd.DataFrame:
+def _input_to_dataframe(data: StudentInput, stats: dict | None = None) -> pd.DataFrame:
+    """Build the engineered one-row frame for a request.
+
+    `stats` is the normalization copy shipped inside the model's own bundle,
+    so a served prediction is always scaled the way that model was trained.
+    """
     row = {col: [getattr(data, col)] for col in RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES}
-    return engineer_features(pd.DataFrame(row))
+    return engineer_features(pd.DataFrame(row), stats=stats)
 
 
 def _derive_risk_level(prob_placed: float) -> str:
@@ -86,19 +92,34 @@ def verify_and_load_bundle(
     preprocessor_path: Path,
     model_path: Path,
     manifest_path: Path | None = None,
-) -> tuple[Any, Any, dict]:
+    norm_stats_path: Path | None = None,
+) -> tuple[Any, Any, dict, dict]:
     """
     Strict validation of a production model bundle:
       1. Verify artifact files exist.
       2. Verify manifest.json exists, matches schema, and model_name matches model_key.
-      3. Verify SHA-256 checksums of model and preprocessor match manifest.
+      3. Verify SHA-256 checksums of model, preprocessor and normalization stats.
       4. Verify preprocessor can transform a valid sample input.
       5. Verify model supports predict() and predict_proba().
+
+    Returns ``(preprocessor, model, manifest, normalization_stats)``.
     """
     if not preprocessor_path.exists():
         raise FileNotFoundError(f"Preprocessor file missing: {preprocessor_path}")
     if not model_path.exists():
         raise FileNotFoundError(f"Model file missing: {model_path}")
+
+    # The bundle's own normalization stats. Required: without them
+    # engineer_features() would have to infer maxima from a single request
+    # row, which pins every *_normalized feature to 1.0.
+    if norm_stats_path is None:
+        norm_stats_path = preprocessor_path.parent / NORM_STATS_FILENAME
+    if not norm_stats_path.exists():
+        raise FileNotFoundError(
+            f"Normalization stats missing from bundle: {norm_stats_path}\n"
+            "Re-package with scripts/package_model.py, which copies them in."
+        )
+    normalization_stats = load_normalization_stats(norm_stats_path)
 
     manifest: dict = {}
     if manifest_path is not None:
@@ -137,6 +158,20 @@ def verify_and_load_bundle(
                 f"  Actual:   {actual_model_sha}"
             )
 
+        # schema_version 1 manifests predate bundled normalization stats, so
+        # only enforce the checksum when the manifest actually declares one.
+        expected_norm_sha = (
+            manifest.get("artifacts", {}).get("normalization_stats", {}).get("sha256")
+        )
+        if expected_norm_sha:
+            actual_norm_sha = _compute_sha256(norm_stats_path)
+            if actual_norm_sha != expected_norm_sha:
+                raise ValueError(
+                    f"Normalization stats SHA-256 mismatch for {model_key}:\n"
+                    f"  Expected: {expected_norm_sha}\n"
+                    f"  Actual:   {actual_norm_sha}"
+                )
+
     # Load artifacts
     preprocessor = joblib.load(preprocessor_path)
     model = joblib.load(model_path)
@@ -150,9 +185,12 @@ def verify_and_load_bundle(
     if "LogisticRegression" in type(model).__name__ and not hasattr(model, "multi_class"):
         model.multi_class = "auto"
 
-    # Smoke-test transformation
+    # Smoke-test transformation, using the bundle's own stats so this
+    # exercises exactly the path a real request takes.
     try:
-        sample_df = engineer_features(pd.DataFrame(_SAMPLE_VALID_RECORD))
+        sample_df = engineer_features(
+            pd.DataFrame(_SAMPLE_VALID_RECORD), stats=normalization_stats
+        )
         X_sample = preprocessor.transform(sample_df)
     except Exception as exc:
         raise RuntimeError(f"Preprocessor validation failed for {model_key}: {exc}") from exc
@@ -167,7 +205,7 @@ def verify_and_load_bundle(
     except Exception as exc:
         raise RuntimeError(f"Model prediction validation failed for {model_key}: {exc}") from exc
 
-    return preprocessor, model, manifest
+    return preprocessor, model, manifest, normalization_stats
 
 
 # ── Abstract Base ────────────────────────────────────────────────────────────
@@ -201,6 +239,7 @@ class BasePredictor(abc.ABC):
         preprocessor_path: Path,
         model_path: Path,
         manifest_path: Path | None = None,
+        norm_stats_path: Path | None = None,
     ) -> BasePredictor:
         """Load preprocessor and model artifacts from disk with manifest validation."""
         ...
@@ -228,11 +267,20 @@ class LogisticRegressionPredictor(BasePredictor):
 
     _MODEL_DISPLAY_NAME = "Logistic Regression"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
+    def __init__(
+        self,
+        preprocessor: Any,
+        model: Any,
+        manifest: dict | None = None,
+        normalization_stats: dict | None = None,
+    ) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
         self._model_version = self._manifest.get("model_version", "1.0.0")
+        # Frozen maxima from this bundle; passed into engineer_features on
+        # every request so the scale always matches this model's training.
+        self._normalization_stats = normalization_stats
 
     @property
     def model_display_name(self) -> str:
@@ -244,21 +292,23 @@ class LogisticRegressionPredictor(BasePredictor):
         preprocessor_path: Path,
         model_path: Path,
         manifest_path: Path | None = None,
+        norm_stats_path: Path | None = None,
     ) -> LogisticRegressionPredictor:
-        preprocessor, model, manifest = verify_and_load_bundle(
+        preprocessor, model, manifest, normalization_stats = verify_and_load_bundle(
             "logistic_regression",
             preprocessor_path,
             model_path,
             manifest_path,
+            norm_stats_path,
         )
-        return cls(preprocessor, model, manifest)
+        return cls(preprocessor, model, manifest, normalization_stats)
 
     @property
     def is_ready(self) -> bool:
         return self._preprocessor is not None and self._model is not None
 
     def predict(self, data: StudentInput) -> PredictionResponse:
-        df = _input_to_dataframe(data)
+        df = _input_to_dataframe(data, stats=self._normalization_stats)
         X_transformed = self._preprocessor.transform(df)
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
@@ -283,11 +333,20 @@ class RandomForestPredictor(BasePredictor):
 
     _MODEL_DISPLAY_NAME = "Random Forest"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
+    def __init__(
+        self,
+        preprocessor: Any,
+        model: Any,
+        manifest: dict | None = None,
+        normalization_stats: dict | None = None,
+    ) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
         self._model_version = self._manifest.get("model_version", "1.0.0")
+        # Frozen maxima from this bundle; passed into engineer_features on
+        # every request so the scale always matches this model's training.
+        self._normalization_stats = normalization_stats
 
     @property
     def model_display_name(self) -> str:
@@ -299,21 +358,23 @@ class RandomForestPredictor(BasePredictor):
         preprocessor_path: Path,
         model_path: Path,
         manifest_path: Path | None = None,
+        norm_stats_path: Path | None = None,
     ) -> RandomForestPredictor:
-        preprocessor, model, manifest = verify_and_load_bundle(
+        preprocessor, model, manifest, normalization_stats = verify_and_load_bundle(
             "random_forest",
             preprocessor_path,
             model_path,
             manifest_path,
+            norm_stats_path,
         )
-        return cls(preprocessor, model, manifest)
+        return cls(preprocessor, model, manifest, normalization_stats)
 
     @property
     def is_ready(self) -> bool:
         return self._preprocessor is not None and self._model is not None
 
     def predict(self, data: StudentInput) -> PredictionResponse:
-        df = _input_to_dataframe(data)
+        df = _input_to_dataframe(data, stats=self._normalization_stats)
         X_transformed = self._preprocessor.transform(df)
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]
@@ -338,11 +399,20 @@ class XGBoostPredictor(BasePredictor):
 
     _MODEL_DISPLAY_NAME = "XGBoost"
 
-    def __init__(self, preprocessor: Any, model: Any, manifest: dict | None = None) -> None:
+    def __init__(
+        self,
+        preprocessor: Any,
+        model: Any,
+        manifest: dict | None = None,
+        normalization_stats: dict | None = None,
+    ) -> None:
         self._preprocessor = preprocessor
         self._model = model
         self._manifest = manifest or {}
         self._model_version = self._manifest.get("model_version", "1.0.0")
+        # Frozen maxima from this bundle; passed into engineer_features on
+        # every request so the scale always matches this model's training.
+        self._normalization_stats = normalization_stats
 
     @property
     def model_display_name(self) -> str:
@@ -354,21 +424,23 @@ class XGBoostPredictor(BasePredictor):
         preprocessor_path: Path,
         model_path: Path,
         manifest_path: Path | None = None,
+        norm_stats_path: Path | None = None,
     ) -> XGBoostPredictor:
-        preprocessor, model, manifest = verify_and_load_bundle(
+        preprocessor, model, manifest, normalization_stats = verify_and_load_bundle(
             "xgboost",
             preprocessor_path,
             model_path,
             manifest_path,
+            norm_stats_path,
         )
-        return cls(preprocessor, model, manifest)
+        return cls(preprocessor, model, manifest, normalization_stats)
 
     @property
     def is_ready(self) -> bool:
         return self._preprocessor is not None and self._model is not None
 
     def predict(self, data: StudentInput) -> PredictionResponse:
-        df = _input_to_dataframe(data)
+        df = _input_to_dataframe(data, stats=self._normalization_stats)
         X_transformed = self._preprocessor.transform(df)
         label: int = int(self._model.predict(X_transformed)[0])
         class_probabilities = self._model.predict_proba(X_transformed)[0]

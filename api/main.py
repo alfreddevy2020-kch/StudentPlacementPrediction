@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 preprocessor_path=bundle["preprocessor"],
                 model_path=bundle["model"],
                 manifest_path=bundle.get("manifest"),
+                norm_stats_path=bundle.get("normalization_stats"),
             )
             _predictors[model_key] = predictor
             print(f"[API] [OK] {predictor.model_display_name} loaded: {bundle['model'].name}")

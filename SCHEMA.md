@@ -92,6 +92,33 @@ per-student readiness scores and what-if simulator are all built on them.
 simulator and the remediation engine clamp to it, so a suggested
 intervention never quotes an uplift from a profile the model has never seen.
 
+## Normalization stats
+
+The three count features (`internships`, `projects`,
+`workshops_certifications`) have no natural upper bound, so their `0-1`
+normalized forms are divided by maxima frozen from the full training set.
+`preprocessing.py` fits these once and writes
+`data/processed/normalization_stats.json`.
+
+They are a fitted parameter of the pipeline, exactly like
+`preprocessor.joblib`, and are handled the same way:
+
+- `scripts/package_model.py` copies them into each production bundle and
+  records their SHA-256 in `manifest.json` (`schema_version: 2`).
+- `api/predictor.py` loads the per-bundle copy and passes it into
+  `engineer_features(..., stats=...)` on every request, so a served model is
+  always scaled the way it was trained — and bundles stay self-contained on a
+  clone where `data/processed/` does not exist.
+- With no stats available, `engineer_features()` **raises**. It will not
+  infer maxima from the batch it is given: for a single row that divides each
+  value by itself, pinning every `*_normalized` feature to 1.0 and reporting
+  `portfolio_strength` as 100 instead of 50 — wrong answers, HTTP 200, no
+  warning. `tests/test_normalization_stats.py` guards both properties.
+
+**Retraining changes these maxima if the data changes.** Re-run
+`scripts/package_model.py` after retraining, or the API's startup checksum
+verification will reject the bundle.
+
 ## Known gaps
 
 The source data has no `backlogs`, `attendance`, department/branch, or

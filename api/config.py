@@ -19,18 +19,21 @@ MODEL_BUNDLES: dict[str, dict[str, Path]] = {
         "model": (ARTIFACT_ROOT / "logistic_regression" / "model.joblib"),
         "manifest": (ARTIFACT_ROOT / "logistic_regression" / "manifest.json"),
         "baseline_metrics": (ARTIFACT_ROOT / "logistic_regression" / "baseline_metrics.json"),
+        "normalization_stats": (ARTIFACT_ROOT / "logistic_regression" / "normalization_stats.json"),
     },
     "random_forest": {
         "preprocessor": (ARTIFACT_ROOT / "random_forest" / "preprocessor.joblib"),
         "model": (ARTIFACT_ROOT / "random_forest" / "model.joblib"),
         "manifest": (ARTIFACT_ROOT / "random_forest" / "manifest.json"),
         "baseline_metrics": (ARTIFACT_ROOT / "random_forest" / "baseline_metrics.json"),
+        "normalization_stats": (ARTIFACT_ROOT / "random_forest" / "normalization_stats.json"),
     },
     "xgboost": {
         "preprocessor": (ARTIFACT_ROOT / "xgboost" / "preprocessor.joblib"),
         "model": (ARTIFACT_ROOT / "xgboost" / "model.joblib"),
         "manifest": (ARTIFACT_ROOT / "xgboost" / "manifest.json"),
         "baseline_metrics": (ARTIFACT_ROOT / "xgboost" / "baseline_metrics.json"),
+        "normalization_stats": (ARTIFACT_ROOT / "xgboost" / "normalization_stats.json"),
     },
 }
 

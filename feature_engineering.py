@@ -31,6 +31,17 @@ forms are scaled by maxima fit ONCE on the full training set by
 preprocessing.py and persisted to NORM_STATS_PATH. engineer_features()
 always reuses that frozen constant so a single student, a filtered cohort
 and the full dataset all get the same scale the model was trained on.
+
+These stats are a fitted parameter of the pipeline, exactly like
+preprocessor.joblib, so scripts/package_model.py copies them into each
+production bundle and records their checksum in the manifest. The API
+loads that per-bundle copy, which keeps a served model pinned to the
+scale it was trained on and makes the bundle self-contained on a fresh
+clone (data/processed/ is gitignored).
+
+If no stats are available, engineer_features() raises rather than
+inferring a maximum from the batch at hand - see the comment at the
+raise for why that fallback was removed.
 """
 import json
 from functools import lru_cache
@@ -39,8 +50,16 @@ from pathlib import Path
 import pandas as pd
 
 _REPO_ROOT = Path(__file__).resolve().parent
-NORM_STATS_PATH = _REPO_ROOT / "data" / "processed" / "normalization_stats.json"
+NORM_STATS_FILENAME = "normalization_stats.json"
+NORM_STATS_PATH = _REPO_ROOT / "data" / "processed" / NORM_STATS_FILENAME
 RAW_DATASET_PATH = _REPO_ROOT / "data" / "raw" / "student_placement.csv"
+
+# Every key a stats file must carry to be usable.
+NORM_STATS_KEYS = (
+    "internships_max",
+    "projects_max",
+    "workshops_certifications_max",
+)
 
 # Raw CSV header -> canonical snake_case name.
 COLUMN_RENAME_MAP = {
@@ -121,26 +140,52 @@ def fit_normalization_stats(df: pd.DataFrame) -> dict:
     return stats
 
 
+def load_normalization_stats(path: Path | str) -> dict:
+    """Read and validate a normalization-stats file from an explicit path.
+
+    Used by api/predictor.py to load the copy shipped inside a production
+    bundle, so served predictions use the stats that were frozen when that
+    exact model was trained.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Normalization stats not found: {path}")
+    with open(path) as f:
+        stats = json.load(f)
+    missing = [k for k in NORM_STATS_KEYS if k not in stats]
+    if missing:
+        raise ValueError(f"Normalization stats at {path} are missing keys: {missing}")
+    return stats
+
+
 @lru_cache(maxsize=1)
 def _load_normalization_stats() -> dict | None:
-    """Read the persisted training-time stats, cached for the process
-    lifetime. Returns None if preprocessing.py has never been run."""
+    """Read the repo-local stats written by preprocessing.py, cached for the
+    process lifetime. Returns None if preprocessing.py has never been run."""
     if NORM_STATS_PATH.exists():
-        with open(NORM_STATS_PATH) as f:
-            return json.load(f)
+        return load_normalization_stats(NORM_STATS_PATH)
     return None
 
 
 def _safe_div(numerator, denominator):
-    """Divide by a frozen constant, guarding the never-yet-preprocessed case."""
+    """Divide by a frozen constant, guarding a degenerate zero maximum."""
     return numerator / denominator if denominator else 0.0
 
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+def engineer_features(df: pd.DataFrame, stats: dict | None = None) -> pd.DataFrame:
     """Adds the 21 derived columns preprocessing.py's ColumnTransformer expects.
 
     Input: raw columns (RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES),
     already snake_cased via normalize_columns(). Does not mutate the input.
+
+    Parameters
+    ----------
+    stats : dict, optional
+        Frozen normalization maxima. Pass the copy from a production bundle
+        to guarantee the served model sees the scale it was trained on.
+        When omitted, the repo-local file written by preprocessing.py is
+        used; if that is absent this raises rather than guessing, because
+        an inferred maximum silently corrupts every *_normalized feature.
 
     Note: these derived features do NOT measurably raise ROC-AUC on this
     dataset (0.8780 -> 0.8778) — the raw features are already close to
@@ -178,22 +223,28 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df["upskilling_score"] = df["workshops_certifications"] + df["projects"]
     df["projects_per_internship"] = df["projects"] / (df["internships"] + 1)
 
-    stats = _load_normalization_stats()
-    if stats is not None:
-        # Frozen training-time constants - identical for a single student,
-        # a filtered cohort, or the full dataset.
-        internships_max = stats["internships_max"]
-        projects_max = stats["projects_max"]
-        workshops_max = stats["workshops_certifications_max"]
-    else:
-        # preprocessing.py has not been (re)run yet, so there is no frozen
-        # constant. Falls back to this batch's own max, which is only
-        # correct when df IS the full training dataset. Any filtered
-        # cohort or single-row caller hitting this branch gets skewed
-        # *_normalized values - run preprocessing.py.
-        internships_max = df["internships"].max()
-        projects_max = df["projects"].max()
-        workshops_max = df["workshops_certifications"].max()
+    if stats is None:
+        stats = _load_normalization_stats()
+    if stats is None:
+        # Deriving the maximum from the batch at hand is only correct when
+        # that batch IS the full training set. For a cohort or a single row
+        # it divides each value by itself, so every *_normalized feature
+        # pins to 1.0 and portfolio_strength reads 100 instead of its true
+        # value - wrong answers with no error. Refuse instead.
+        raise RuntimeError(
+            f"Normalization stats not found at {NORM_STATS_PATH}.\n"
+            "engineer_features() will not infer them from the input, because "
+            "an inferred maximum silently corrupts every *_normalized "
+            "feature.\n"
+            "Fix: run `python preprocessing.py` to regenerate them, or pass "
+            "stats= explicitly (production bundles ship their own copy)."
+        )
+
+    # Frozen training-time constants - identical for a single student,
+    # a filtered cohort, or the full dataset.
+    internships_max = stats["internships_max"]
+    projects_max = stats["projects_max"]
+    workshops_max = stats["workshops_certifications_max"]
 
     df["internships_normalized"] = _safe_div(df["internships"], internships_max)
     df["projects_normalized"] = _safe_div(df["projects"], projects_max)

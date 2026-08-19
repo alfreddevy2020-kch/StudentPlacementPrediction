@@ -23,6 +23,13 @@ from pathlib import Path
 
 import joblib
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from feature_engineering import (  # noqa: E402
+    NORM_STATS_FILENAME,
+    NORM_STATS_PATH,
+    load_normalization_stats,
+)
+
 
 def compute_sha256(filepath: Path) -> str:
     """Compute the SHA-256 checksum of a file."""
@@ -49,12 +56,28 @@ def package_model(
     model_src: Path,
     output_dir: Path,
     overwrite: bool = False,
+    norm_stats_src: Path | None = None,
 ) -> Path:
-    """Package model and preprocessor into destination folder and generate manifest."""
+    """Package model, preprocessor and normalization stats into the
+    destination folder and generate a checksummed manifest."""
     if not preprocessor_src.exists():
         raise FileNotFoundError(f"Source preprocessor not found: {preprocessor_src}")
     if not model_src.exists():
         raise FileNotFoundError(f"Source model not found: {model_src}")
+
+    # The frozen normalization maxima are a fitted parameter of the pipeline,
+    # just like the preprocessor. data/processed/ is gitignored, so a bundle
+    # without its own copy silently falls back to inferred maxima on a fresh
+    # clone. Ship it inside the bundle and refuse to package without it.
+    norm_stats_src = Path(norm_stats_src or NORM_STATS_PATH)
+    if not norm_stats_src.exists():
+        raise FileNotFoundError(
+            f"Normalization stats not found: {norm_stats_src}\n"
+            "Run `python preprocessing.py` first — a bundle without them "
+            "produces silently skewed predictions."
+        )
+    # Validates the required keys are present before we checksum it.
+    load_normalization_stats(norm_stats_src)
 
     target_dir = output_dir / model_name
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -62,9 +85,11 @@ def package_model(
     dest_preprocessor = target_dir / "preprocessor.joblib"
     dest_model = target_dir / "model.joblib"
     dest_manifest = target_dir / "manifest.json"
+    dest_norm_stats = target_dir / NORM_STATS_FILENAME
 
     if not overwrite:
-        existing = [p.name for p in (dest_preprocessor, dest_model, dest_manifest) if p.exists()]
+        candidates = (dest_preprocessor, dest_model, dest_manifest, dest_norm_stats)
+        existing = [p.name for p in candidates if p.exists()]
         if existing:
             raise FileExistsError(
                 f"Target files already exist in {target_dir}: {existing}. "
@@ -74,16 +99,18 @@ def package_model(
     # Copy artifacts
     shutil.copy2(preprocessor_src, dest_preprocessor)
     shutil.copy2(model_src, dest_model)
+    shutil.copy2(norm_stats_src, dest_norm_stats)
 
     # Compute checksums
     prep_sha256 = compute_sha256(dest_preprocessor)
     model_sha256 = compute_sha256(dest_model)
+    norm_sha256 = compute_sha256(dest_norm_stats)
     model_class = get_model_class_name(dest_model)
 
     created_at_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     manifest_data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_name": model_name,
         "model_version": model_version,
         "model_class": model_class,
@@ -97,6 +124,10 @@ def package_model(
                 "filename": "model.joblib",
                 "sha256": model_sha256,
             },
+            "normalization_stats": {
+                "filename": NORM_STATS_FILENAME,
+                "sha256": norm_sha256,
+            },
         },
     }
 
@@ -109,6 +140,7 @@ def package_model(
     print(f"     Version      : {model_version}")
     print(f"     Preprocessor : {prep_sha256}")
     print(f"     Model Hash   : {model_sha256}")
+    print(f"     Norm Stats   : {norm_sha256}")
 
     return target_dir
 
@@ -134,6 +166,12 @@ def main() -> None:
         help="Root directory for production artifacts (default: artifacts/production)",
     )
     parser.add_argument(
+        "--normalization-stats",
+        type=Path,
+        default=NORM_STATS_PATH,
+        help=f"Path to {NORM_STATS_FILENAME} (default: data/processed/)",
+    )
+    parser.add_argument(
         "--overwrite", action="store_true", help="Overwrite existing files in target folder"
     )
 
@@ -147,6 +185,7 @@ def main() -> None:
             model_src=args.model,
             output_dir=args.output_dir,
             overwrite=args.overwrite,
+            norm_stats_src=args.normalization_stats,
         )
     except Exception as exc:
         print(f"\n[FAIL] Packaging error: {exc}", file=sys.stderr)

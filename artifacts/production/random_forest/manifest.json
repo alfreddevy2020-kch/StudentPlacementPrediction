@@ -1,9 +1,9 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "model_name": "random_forest",
-  "model_version": "2026.08.19-rf.2",
+  "model_version": "2026.08.19-rf.3",
   "model_class": "RandomForestClassifier",
-  "created_at_utc": "2026-08-19T09:57:03Z",
+  "created_at_utc": "2026-08-19T11:14:10Z",
   "artifacts": {
     "preprocessor": {
       "filename": "preprocessor.joblib",
@@ -12,6 +12,10 @@
     "model": {
       "filename": "model.joblib",
       "sha256": "a1d93fea17cd5cb758de91c5e3a2f4d8440ba7050de50a8962fd8538ede2596c"
+    },
+    "normalization_stats": {
+      "filename": "normalization_stats.json",
+      "sha256": "1d1322628005d2bfdd8c6ddaf7d10ef9633ef1e4190b6257aed965c2a924d0c9"
     }
   }
 }

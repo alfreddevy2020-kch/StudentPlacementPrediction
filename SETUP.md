@@ -47,6 +47,7 @@ This is the section that explains every "it doesn't work on my machine".
 |---|---|
 | `artifacts/production/{model}/model.joblib` | The three trained models the **API** serves |
 | `artifacts/production/{model}/preprocessor.joblib` | Fitted `ColumnTransformer` |
+| `artifacts/production/{model}/normalization_stats.json` | Frozen scaling maxima for that model |
 | `artifacts/production/{model}/manifest.json` | Version + SHA-256 checksums, verified at startup |
 | `artifacts/production/{model}/baseline_metrics.json` | Reference distribution for drift monitoring |
 | `part3/models/xgboost_best.json` | XGBoost native format (not `.joblib`, so not ignored) |
@@ -65,7 +66,7 @@ lets the API run on a fresh clone.
 | `venv/` | Section 3 | everything |
 | `data/raw/student_placement.csv` | `download_dataset.py` | everything downstream |
 | `data/processed/*.csv` | `preprocessing.py` | model training, part4, part8 |
-| **`data/processed/normalization_stats.json`** | `preprocessing.py` | **correct API + dashboard predictions — see Section 5** |
+| `data/processed/normalization_stats.json` | `preprocessing.py` | dashboard predictions, and packaging new bundles (Section 5) |
 | `part2/models/*.joblib` | Section 6 | dashboard, part8 |
 | `part2/model_results/*` | Section 10 | Part 2 reporting |
 | `part3/models/xgboost_best.joblib` | Section 6 | dashboard, part4, part8 |
@@ -80,7 +81,7 @@ There is no HTTP between them.
 
 | | Reads from | Works on a bare clone? |
 |---|---|---|
-| **FastAPI** (`api.main:app`) | `artifacts/production/` (committed) | Starts yes — but predictions are wrong until `preprocessing.py` has run (Section 5) |
+| **FastAPI** (`api.main:app`) | `artifacts/production/` (committed) | **Yes** — bundles are self-contained |
 | **Streamlit** (`frontend/app.py`) | `part2/models/`, `part3/models/`, `data/raw/` (all ignored) | No — needs Sections 4–6 |
 
 > `.streamlit/secrets.toml` contains a `BACKEND_URL` key. It is a leftover
@@ -192,32 +193,34 @@ test -f data/raw/student_placement.csv && echo "RAW OK" || echo "MISSING"
 
 ---
 
-## 5. Preprocess — required, including for the API
+## 5. Preprocess
 
 ```bash
 venv\Scripts\python.exe preprocessing.py      # Windows
 venv/bin/python preprocessing.py              # Mac/Linux
 ```
 
-### Why this is required even though model artifacts are committed
+Required before training anything, and before the **dashboard** will work.
+The **API** does not need it — each production bundle ships its own copy of
+the normalization stats (see below).
 
-`preprocessing.py` writes **`data/processed/normalization_stats.json`**, which
-holds the training-set maxima used to scale the count features. That file is
-gitignored, so it is absent on a fresh clone.
+### About `normalization_stats.json`
 
-When it is missing, `engineer_features()` falls back to computing the maximum
-from whatever batch it is handed. For a **single-row API request** that means
-each feature is divided by its own value:
+`preprocessing.py` writes `data/processed/normalization_stats.json`, holding
+the training-set maxima used to scale the count features. `data/processed/`
+is gitignored, so that file is absent on a fresh clone.
 
-| Feature | With stats (correct) | Without stats (fresh clone) |
-|---|---|---|
-| `internships_normalized` | 0.5 | 1.0 |
-| `projects_normalized` | 0.667 | 1.0 |
-| `portfolio_strength` | 50.0 | 100.0 |
+Those maxima are a fitted parameter of the pipeline, exactly like
+`preprocessor.joblib`, so `scripts/package_model.py` copies them into each
+production bundle and records their SHA-256 in the manifest. The API loads
+the per-bundle copy, which keeps a served model pinned to the scale it was
+trained on and makes bundles self-contained.
 
-The API still starts and still returns 200s — the predictions are just
-silently wrong, with every student scoring a maximal portfolio. **Run
-`preprocessing.py` before trusting any prediction.**
+If no stats are available at all, `engineer_features()` **raises**. It will
+not infer a maximum from the batch it is given: for a single row that
+divides each value by itself, pinning every `*_normalized` feature to 1.0
+and reporting `portfolio_strength` as 100 instead of 50 — wrong answers with
+no error. `tests/test_normalization_stats.py` locks this behaviour in.
 
 ### What it does
 
@@ -236,7 +239,7 @@ silently wrong, with every student scoring a maximal portfolio. **Run
 data/processed/train_processed.csv        8,000 × 34  (33 features + target)
 data/processed/test_processed.csv         2,000 × 34
 data/processed/class_weights.csv
-data/processed/normalization_stats.json   <- see warning above
+data/processed/normalization_stats.json   <- also copied into each bundle
 part2/models/preprocessor.joblib
 ```
 
@@ -519,6 +522,7 @@ StudentPlacementPrediction/
 │       ├── model.joblib
 │       ├── preprocessor.joblib
 │       ├── manifest.json               ← version + SHA-256
+│       ├── normalization_stats.json    ← frozen scaling maxima
 │       └── baseline_metrics.json       ← drift reference
 │
 ├── scripts/
@@ -527,7 +531,8 @@ StudentPlacementPrediction/
 │   ├── generate_baseline_metrics.py    ← refresh drift baselines
 │   └── smoke_test_models.py            ← validate committed bundles
 │
-├── tests/                              ← pytest suite (api, schemas, logger, drift)
+├── tests/                              ← pytest suite (api, schemas, logger,
+│                                          drift, normalization stats)
 ├── docs/DEPLOYMENT.md                  ← Render + Streamlit Cloud
 │
 ├── part2/                              ← Logistic Regression + Random Forest
@@ -574,8 +579,8 @@ data/raw/student_placement.csv
 preprocessing.py
         ├─► data/processed/{train,test}_processed.csv
         ├─► data/processed/class_weights.csv
-        ├─► data/processed/normalization_stats.json ──┐  (needed by BOTH
-        └─► part2/models/preprocessor.joblib          │   entry points)
+        ├─► data/processed/normalization_stats.json ──┐  (dashboard reads
+        └─► part2/models/preprocessor.joblib          │   this directly)
         │                                             │
         ├──► scripts/train_models_fast.py             │
         │      ├─► part2/models/random_forest_best.joblib
@@ -591,10 +596,14 @@ preprocessing.py
         ├──► frontend/app.py ◄── part2/models/ + part3/models/ + data/raw/
         │            └─► http://localhost:8501
         │
-        └──► scripts/package_model.py ─► artifacts/production/
+        └──► scripts/package_model.py
+                     │   copies preprocessor + model + normalization_stats
+                     │   into the bundle and checksums all three
+                     ▼
+               artifacts/production/   [COMMITTED, self-contained]
                      │
                      ▼
-               api.main:app ◄── artifacts/production/ (committed)
+               api.main:app  (needs no data/ directory)
                      └─► http://localhost:8000
 
 NOTE: the two servers are independent. The dashboard does not call the API.
@@ -614,10 +623,17 @@ You are not using the venv interpreter. Prefix with
 Run `download_dataset.py` (Section 4). Every downstream script reads that
 exact path.
 
-### Predictions look wrong — everything scores very high
+### `RuntimeError: Normalization stats not found at ...`
 
-`data/processed/normalization_stats.json` is missing. Run `preprocessing.py`.
-See Section 5 for why this fails silently rather than loudly.
+Run `preprocessing.py`. This is deliberate: the alternative was inferring the
+scaling maxima from the input, which silently corrupts every `*_normalized`
+feature. See Section 5.
+
+### `Normalization stats SHA-256 mismatch` at API startup
+
+A bundle's `normalization_stats.json` was edited without re-running
+`scripts/package_model.py`, so the manifest checksum no longer matches.
+Re-package (Section 6).
 
 ### Dashboard: "Prediction pipeline failed" / KeyError on a column name
 
