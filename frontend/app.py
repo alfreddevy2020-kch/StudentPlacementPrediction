@@ -45,7 +45,15 @@ from batch_predictor import (
 )
 from simulator import INTERVENTION_KNOBS, CohortWhatIfSimulator
 
-from feature_engineering import FEATURE_RANGES, TARGET_COLUMN, TARGET_MAP
+from feature_engineering import (
+    COLUMN_RENAME_MAP,
+    FEATURE_RANGES,
+    RAW_CATEGORICAL_FEATURES,
+    RAW_NUMERICAL_FEATURES,
+    TARGET_COLUMN,
+    TARGET_MAP,
+    normalize_columns,
+)
 
 # Try importing pdfplumber for resume parsing (optional)
 try:
@@ -397,11 +405,12 @@ st.caption(
     f"Driven by **{selected_model_name}**"
 )
 
-# 3 Primary Tabs — Material icons, sentence casing (per design.md)
-tab1, tab2, tab3 = st.tabs([
+# 4 Primary Tabs — Material icons, sentence casing (per design.md)
+tab1, tab2, tab3, tab4 = st.tabs([
     ":material/bar_chart: Departmental pulse & readiness",
     ":material/person_search: Per-student diagnostic & skill-gaps",
     ":material/tune: Cohort what-if policy simulator",
+    ":material/analytics: Upload & analyze cohort",
 ])
 
 
@@ -1290,6 +1299,258 @@ with tab3:
                 use_container_width=True,
                 hide_index=True,
             )
+
+
+# =============================================================================
+# TAB 4: UPLOAD & ANALYZE COHORT
+# =============================================================================
+with tab4:
+    st.markdown("### :material/analytics: Custom cohort upload & analytics")
+    st.caption("Upload a CSV file containing student placement details to evaluate readiness, map risk tiers, and generate custom cohort data analytics.")
+
+    # Template download or example expander
+    with st.expander(":material/info: View expected CSV schema & sample template"):
+        st.markdown("""
+        The uploaded CSV should contain columns matching the dataset schema. Headers can be in either **raw mixed-case** format or **snake_case**.
+
+        **Required Columns:**
+        - **CGPA**: Student's Cumulative Grade Point Average (typically 6.5 to 9.5)
+        - **Internships**: Number of internships completed (e.g. 0, 1, 2)
+        - **Projects**: Number of projects completed (e.g. 0, 1, 2, 3)
+        - **Workshops/Certifications**: Number of workshops/certifications (e.g. 0, 1, 2, 3)
+        - **AptitudeTestScore**: Score in mock aptitude test (typically 60 to 90)
+        - **SoftSkillsRating**: Soft skills rating (typically 3.0 to 5.0)
+        - **ExtracurricularActivities**: "Yes" or "No"
+        - **PlacementTraining**: "Yes" or "No"
+        - **SSC_Marks**: 10th grade marks percentage (typically 55.0 to 90.0)
+        - **HSC_Marks**: 12th grade marks percentage (typically 57.0 to 88.0)
+
+        **Optional Columns:**
+        - **StudentID**: Unique identifier
+        - **PlacementStatus**: "Placed" or "NotPlaced" (used to compare against actual placement outcomes if available)
+        """)
+
+        # Create a download button for a sample template!
+        sample_template = pd.DataFrame([{
+            "StudentID": 10001,
+            "CGPA": 8.2,
+            "Internships": 1,
+            "Projects": 2,
+            "Workshops/Certifications": 1,
+            "AptitudeTestScore": 78,
+            "SoftSkillsRating": 4.2,
+            "ExtracurricularActivities": "Yes",
+            "PlacementTraining": "No",
+            "SSC_Marks": 82.5,
+            "HSC_Marks": 79.0,
+            "PlacementStatus": "Placed"
+        }])
+
+        template_csv = sample_template.to_csv(index=False)
+        st.download_button(
+            label="Download sample CSV template",
+            data=template_csv,
+            file_name="student_placement_template.csv",
+            mime="text/csv",
+            icon=":material/download:",
+        )
+
+    uploaded_file = st.file_uploader("Upload student placement details (CSV)", type=["csv"], key="cohort_csv_uploader")
+
+    if uploaded_file is not None:
+        try:
+            custom_df = pd.read_csv(uploaded_file)
+            st.success(f"Successfully loaded file: **{uploaded_file.name}** ({len(custom_df)} rows)", icon=":material/check_circle:")
+
+            # Normalize column headers
+            norm_custom_df = normalize_columns(custom_df)
+
+            # Validate required columns
+            required_cols = RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES
+            missing_cols = [col for col in required_cols if col not in norm_custom_df.columns]
+
+            if missing_cols:
+                # Map snake_case back to user-friendly raw names to show in the error
+                raw_mapping = {v: k for k, v in COLUMN_RENAME_MAP.items()}
+                friendly_missing = [raw_mapping.get(c, c) for c in missing_cols]
+                st.error(
+                    f"**Validation Error:** The uploaded CSV is missing the following required columns:\n"
+                    f"{', '.join(f'`{c}`' for c in friendly_missing)}\n\n"
+                    "Please check the sample template above and ensure all required fields are included."
+                )
+            else:
+                # Run predictions on the uploaded data!
+                custom_probs = predictor.predict_probabilities(
+                    norm_custom_df, model_name=st.session_state.get("active_model")
+                )
+
+                # Add predictions to the DataFrame
+                norm_custom_df = norm_custom_df.copy()
+                norm_custom_df["placement_prob"] = np.round(custom_probs * 100, 1)
+                norm_custom_df["predicted_status"] = np.where(
+                    custom_probs >= 0.50, "Placed", "Not Placed"
+                )
+                norm_custom_df["risk_tier"] = [
+                    predictor.classify_risk(p) for p in custom_probs
+                ]
+
+                st.markdown("---")
+                st.markdown("### :material/analytics: Uploaded Cohort Data Analytics")
+
+                # Row 1: Key Performance Indicators
+                with st.container(border=True):
+                    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+                    tot = len(norm_custom_df)
+                    p_cnt = int((norm_custom_df["predicted_status"] == "Placed").sum())
+                    p_rate = round((p_cnt / tot) * 100, 1) if tot > 0 else 0.0
+                    avg_prob = round(float(norm_custom_df["placement_prob"].mean()), 1)
+                    high_risk_cnt = int((norm_custom_df["placement_prob"] < 50.0).sum())
+
+                    with kpi1:
+                        st.metric("Uploaded students", f"{tot:,}")
+                    with kpi2:
+                        st.metric("Projected placement rate", f"{p_rate}%", f"{p_cnt} placed")
+                    with kpi3:
+                        st.metric("Average placement likelihood", f"{avg_prob}%")
+                    with kpi4:
+                        st.metric("At-risk students (<50%)", f"{high_risk_cnt}", f"{round((high_risk_cnt / max(1, tot)) * 100, 1)}% of cohort", delta_color="inverse")
+
+                # Row 2: Charts
+                c1, c2 = st.columns(2)
+                with c1, st.container(border=True):
+                    st.markdown("#### :material/pie_chart: Risk tier distribution")
+                    rt_dist = norm_custom_df["risk_tier"].value_counts().reset_index()
+                    rt_dist.columns = ["Risk Tier", "Count"]
+                    fig_pie_custom = px.pie(
+                        rt_dist,
+                        names="Risk Tier",
+                        values="Count",
+                        color="Risk Tier",
+                        color_discrete_map=RISK_COLORS,
+                        hole=0.5,
+                    )
+                    fig_pie_custom.update_layout(get_plotly_layout(height=260))
+                    st.plotly_chart(fig_pie_custom, use_container_width=True)
+
+                with c2, st.container(border=True):
+                    st.markdown("#### :material/bubble_chart: Academic score vs. predicted probability")
+                    if "academic_score" not in norm_custom_df.columns:
+                        norm_custom_df["academic_score"] = (norm_custom_df["ssc_marks"] + norm_custom_df["hsc_marks"]) / 2
+                    fig_scatter = px.scatter(
+                        norm_custom_df,
+                        x="cgpa",
+                        y="placement_prob",
+                        color="risk_tier",
+                        color_discrete_map=RISK_COLORS,
+                        hover_data=["cgpa", "academic_score", "internships", "projects"],
+                        labels={"cgpa": "CGPA", "placement_prob": "Placement Probability (%)"},
+                    )
+                    fig_scatter.update_layout(get_plotly_layout(height=260))
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+
+                # Row 3: Placement Training Impact & Internship/Project Distribution
+                c3, c4 = st.columns(2)
+                with c3, st.container(border=True):
+                    st.markdown("#### :material/query_stats: Placement training impact")
+                    training_stats = (
+                        norm_custom_df.groupby("placement_training", observed=True)["placement_prob"]
+                        .mean()
+                        .reset_index()
+                    )
+                    fig_train = px.bar(
+                        training_stats,
+                        x="placement_training",
+                        y="placement_prob",
+                        color="placement_training",
+                        color_discrete_sequence=["#3B82F6", "#60A5FA"],
+                        labels={"placement_training": "Placement Training", "placement_prob": "Avg Probability (%)"},
+                        text_auto=".1f",
+                    )
+                    fig_train.update_layout(get_plotly_layout(height=260))
+                    fig_train.update_layout(showlegend=False)
+                    st.plotly_chart(fig_train, use_container_width=True)
+
+                with c4, st.container(border=True):
+                    st.markdown("#### :material/construction: Portfolio strength (Projects & Internships)")
+                    portfolio_stats = (
+                        norm_custom_df.groupby(["internships", "projects"], observed=True)["placement_prob"]
+                        .mean()
+                        .reset_index()
+                    )
+                    portfolio_stats["combination"] = (
+                        "Int: " + portfolio_stats["internships"].astype(str) + " / Proj: " + portfolio_stats["projects"].astype(str)
+                    )
+                    fig_port = px.bar(
+                        portfolio_stats.sort_values(by="placement_prob", ascending=False).head(10),
+                        x="placement_prob",
+                        y="combination",
+                        orientation="h",
+                        color="placement_prob",
+                        color_continuous_scale="Blues",
+                        labels={"combination": "Internships / Projects", "placement_prob": "Avg Probability (%)"},
+                    )
+                    fig_port.update_layout(get_plotly_layout(height=260))
+                    st.plotly_chart(fig_port, use_container_width=True)
+
+                # actual vs predicted if actual column is present
+                if "placement_status" in norm_custom_df.columns:
+                    norm_custom_df["actual_numeric"] = norm_custom_df["placement_status"].map(TARGET_MAP).fillna(-1)
+                    if (norm_custom_df["actual_numeric"] != -1).any():
+                        with st.container(border=True):
+                            st.markdown("#### :material/checklist: Actual vs. Predicted Placement Outcomes")
+                            c_act1, c_act2 = st.columns(2)
+                            with c_act1:
+                                actual_placed = (norm_custom_df["actual_numeric"] == 1).sum()
+                                actual_rate = round((actual_placed / tot) * 100, 1) if tot > 0 else 0.0
+                                st.metric("Actual Placement Rate", f"{actual_rate}%", f"{actual_placed} placed")
+                            with c_act2:
+                                correct_preds = ((norm_custom_df["predicted_status"] == "Placed") == (norm_custom_df["actual_numeric"] == 1)).sum()
+                                match_pct = round((correct_preds / tot) * 100, 1) if tot > 0 else 0.0
+                                st.metric("Prediction Accuracy", f"{match_pct}%", f"{correct_preds} matches")
+
+                # Row 4: Data table
+                with st.container(border=True):
+                    st.markdown("#### :material/table_rows: Uploaded student diagnostic list")
+                    display_df = norm_custom_df.copy()
+                    col_config = {
+                        "placement_prob": st.column_config.ProgressColumn(
+                            "Placement Likelihood",
+                            format="%.1f%%",
+                            min_value=0,
+                            max_value=100,
+                        ),
+                        "predicted_status": st.column_config.SelectboxColumn(
+                            "Projected Outcome",
+                            options=["Placed", "Not Placed"]
+                        ),
+                        "risk_tier": "Risk Tier"
+                    }
+                    if "student_id" not in display_df.columns:
+                        display_df["student_id"] = [f"STU-{10000 + i}" for i in range(len(display_df))]
+
+                    cols_to_show = ["student_id", "cgpa", "internships", "projects", "aptitude_test_score", "soft_skills_rating", "placement_prob", "predicted_status", "risk_tier"]
+                    if "placement_status" in display_df.columns:
+                        cols_to_show.insert(6, "placement_status")
+
+                    st.dataframe(
+                        display_df[cols_to_show],
+                        column_config=col_config,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    prediction_results_csv = display_df.to_csv(index=False)
+                    st.download_button(
+                        label="Export placement predictions to CSV",
+                        data=prediction_results_csv,
+                        file_name=f"predicted_{uploaded_file.name}",
+                        mime="text/csv",
+                        icon=":material/download_2:",
+                    )
+        except Exception as e:
+            st.error(f"Failed to process CSV file: {e}")
+    else:
+        st.info("Upload a CSV file of your student cohort in the field above to view real-time data analytics and projected outcomes.", icon=":material/upload_file:")
 
 
 # =============================================================================
