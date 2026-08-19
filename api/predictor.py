@@ -141,6 +141,15 @@ def verify_and_load_bundle(
     preprocessor = joblib.load(preprocessor_path)
     model = joblib.load(model_path)
 
+    # scikit-learn dropped LogisticRegression.multi_class in 1.7, but older
+    # runtimes still read it during predict(). An artifact pickled by a newer
+    # sklearn than the one loading it therefore blows up on predict() rather
+    # than at load time. Restore the attribute so a version skew between the
+    # training environment and the serving/CI environment stays survivable.
+    # (frontend/batch_predictor.py applies the same shim.)
+    if "LogisticRegression" in type(model).__name__ and not hasattr(model, "multi_class"):
+        model.multi_class = "auto"
+
     # Smoke-test transformation
     try:
         sample_df = engineer_features(pd.DataFrame(_SAMPLE_VALID_RECORD))
