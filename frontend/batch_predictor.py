@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -43,6 +44,11 @@ def _resolve(prod_rel: str, dev_rel: str) -> Path:
 PREPROCESSOR_PATH: Path = _resolve(
     "random_forest/preprocessor.joblib",
     "part2/models/preprocessor.joblib",
+)
+
+STATS_PATH: Path = _resolve(
+    "random_forest/normalization_stats.json",
+    "data/processed/normalization_stats.json",
 )
 
 MODEL_PATHS: dict[str, Path] = {
@@ -81,6 +87,7 @@ class BatchPredictor:
 
     def __init__(self) -> None:
         self._preprocessor = None
+        self._stats: dict | None = None
         self._models: dict[str, object] = {}
         self._active_model_name: str = ""
         self._loaded = False
@@ -94,6 +101,12 @@ class BatchPredictor:
             )
 
         self._preprocessor = joblib.load(PREPROCESSOR_PATH)
+
+        if STATS_PATH.exists():
+            with open(STATS_PATH) as f:
+                self._stats = json.load(f)
+        else:
+            self._stats = None
 
         for name, path in MODEL_PATHS.items():
             if path.exists():
@@ -145,7 +158,7 @@ class BatchPredictor:
         return self._models.get(self._active_model_name)
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = engineer_features(df)  # adds the 18 derived columns first
+        df = engineer_features(df, stats=self._stats)  # adds the 18 derived columns first
         result = pd.DataFrame(index=df.index)
         for col in RAW_NUMERICAL_FEATURES + [c for c in NUMERICAL_FEATURES if c not in RAW_NUMERICAL_FEATURES]:
             result[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0) if col in df.columns else 0.0
