@@ -29,7 +29,7 @@ class ModelName(str, Enum):
 
 class StudentInput(BaseModel):
     """
-    15 raw student features expected by the prediction endpoint.
+    23 raw student features expected by the prediction endpoint.
 
     **Do not include** `student_id` or `salary_package_lpa`.
     """
@@ -42,116 +42,59 @@ class StudentInput(BaseModel):
     )
 
     # ── Numerical ──────────────────────────────────────────────────────────
-    ssc_percentage: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Secondary School (10th grade) percentage.",
-        examples=[75.5],
-    )
-    hsc_percentage: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Higher Secondary (12th grade) percentage.",
-        examples=[78.0],
-    )
-    degree_percentage: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Undergraduate degree percentage.",
-        examples=[72.0],
-    )
-    cgpa: float = Field(
-        ...,
-        ge=0.0, le=10.0,
-        description="College Cumulative GPA on a 10-point scale.",
-        examples=[8.2],
-    )
-    attendance_percentage: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="College attendance percentage.",
-        examples=[90.0],
-    )
-    backlogs: int = Field(
-        ...,
-        ge=0,
-        description="Number of active academic backlogs (failed subjects).",
-        examples=[0],
-    )
-    entrance_exam_score: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Entrance examination score.",
-        examples=[85.0],
-    )
-    technical_skill_score: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Technical / coding skills assessment score.",
-        examples=[80.0],
-    )
-    soft_skill_score: float = Field(
-        ...,
-        ge=0.0, le=100.0,
-        description="Soft skills (communication, teamwork) assessment score.",
-        examples=[75.0],
-    )
-    certifications: int = Field(
-        ...,
-        ge=0,
-        description="Number of professional certifications earned.",
-        examples=[3],
-    )
-    live_projects: int = Field(
-        ...,
-        ge=0,
-        description="Number of live / capstone projects completed.",
-        examples=[1],
-    )
-    internship_count: int = Field(
-        ...,
-        ge=0,
-        description="Number of internships completed.",
-        examples=[2],
-    )
-    work_experience_months: int = Field(
-        ...,
-        ge=0,
-        description="Prior professional work experience in months.",
-        examples=[6],
-    )
+    age: int = Field(..., ge=15, le=60, examples=[21])
+    cgpa: float = Field(..., ge=0.0, le=10.0, examples=[8.2])
+    attendance_percentage: float = Field(..., ge=0.0, le=100.0, examples=[90.0])
+    backlogs: int = Field(..., ge=0, examples=[0])
+    coding_skill_score: float = Field(..., ge=0.0, le=100.0, examples=[80.0])
+    aptitude_score: float = Field(..., ge=0.0, le=100.0, examples=[75.0])
+    communication_skill_score: float = Field(..., ge=0.0, le=100.0, examples=[78.0])
+    logical_reasoning_score: float = Field(..., ge=0.0, le=100.0, examples=[72.0])
+    mock_interview_score: float = Field(..., ge=0.0, le=100.0, examples=[70.0])
+    internships_count: int = Field(..., ge=0, examples=[2])
+    projects_count: int = Field(..., ge=0, examples=[1])
+    certifications_count: int = Field(..., ge=0, examples=[3])
+    hackathons_participated: int = Field(..., ge=0, examples=[1])
+    github_repos: int = Field(..., ge=0, examples=[5])
+    linkedin_connections: int = Field(..., ge=0, examples=[150])
+    extracurricular_score: float = Field(..., ge=0.0, le=100.0, examples=[60.0])
+    leadership_score: float = Field(..., ge=0.0, le=100.0, examples=[55.0])
+    sleep_hours: float = Field(..., ge=0.0, le=24.0, examples=[7.0])
+    study_hours_per_day: float = Field(..., ge=0.0, le=24.0, examples=[4.0])
 
-    # ── Categorical ────────────────────────────────────────────────────────
-    gender: Literal["Male", "Female"] = Field(
-        ...,
-        description="Student gender. Accepted values: 'Male', 'Female'.",
-        examples=["Male"],
-    )
-    extracurricular_activities: Literal["Yes", "No"] = Field(
-        ...,
-        description="Participation in extracurricular activities. Accepted values: 'Yes', 'No'.",
-        examples=["Yes"],
-    )
+    # ── Categorical ─────────────────────────────────────────────────────────
+    gender: Literal["Male", "Female"]
+    branch: str
+    college_tier: str
+    volunteer_experience: Literal["Yes", "No"]
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "model": "random_forest",
-                "ssc_percentage": 75.5,
-                "hsc_percentage": 78.0,
-                "degree_percentage": 72.0,
+                "age": 21,
                 "cgpa": 8.2,
                 "attendance_percentage": 90.0,
                 "backlogs": 0,
-                "entrance_exam_score": 85.0,
-                "technical_skill_score": 80.0,
-                "soft_skill_score": 75.0,
-                "certifications": 3,
-                "live_projects": 1,
-                "internship_count": 2,
-                "work_experience_months": 6,
+                "coding_skill_score": 80.0,
+                "aptitude_score": 75.0,
+                "communication_skill_score": 78.0,
+                "logical_reasoning_score": 72.0,
+                "mock_interview_score": 70.0,
+                "internships_count": 2,
+                "projects_count": 1,
+                "certifications_count": 3,
+                "hackathons_participated": 1,
+                "github_repos": 5,
+                "linkedin_connections": 150,
+                "extracurricular_score": 60.0,
+                "leadership_score": 55.0,
+                "sleep_hours": 7.0,
+                "study_hours_per_day": 4.0,
                 "gender": "Male",
-                "extracurricular_activities": "Yes",
+                "branch": "CSE",
+                "college_tier": "Tier 1",
+                "volunteer_experience": "Yes",
             }
         }
     }

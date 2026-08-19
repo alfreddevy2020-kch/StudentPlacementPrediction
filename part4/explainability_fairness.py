@@ -81,7 +81,7 @@ RAW_PATH = REPO_ROOT / "data" / "raw" / "student_placement.csv"
 XGB_JOBLIB = REPO_ROOT / "part3" / "models" / "xgboost_best.joblib"
 XGB_JSON = REPO_ROOT / "part3" / "models" / "xgboost_best.json"
 
-SENSITIVE_COLUMNS = ["gender", "extracurricular_activities"]
+SENSITIVE_COLUMNS = ["gender", "branch", "college_tier", "volunteer_experience"]
 THRESHOLD = 0.5
 
 
@@ -433,18 +433,16 @@ def run_fairness_audit(model, X_test, y_test, X_test_raw):
 def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     """Write a human-readable fairness + explainability report with mitigations."""
     gender_df = fairness_df[fairness_df["sensitive_attribute"] == "gender"]
-    extrac_df = fairness_df[
-        fairness_df["sensitive_attribute"] == "extracurricular_activities"
-    ]
+    vol_df = fairness_df[fairness_df["sensitive_attribute"] == "volunteer_experience"]
 
     gender_fnr_gap = (
         gender_df["false_negative_rate"].max() - gender_df["false_negative_rate"].min()
         if len(gender_df) > 1
         else 0.0
     )
-    extrac_fnr_gap = (
-        extrac_df["false_negative_rate"].max() - extrac_df["false_negative_rate"].min()
-        if len(extrac_df) > 1
+    vol_fnr_gap = (
+        vol_df["false_negative_rate"].max() - vol_df["false_negative_rate"].min()
+        if len(vol_df) > 1
         else 0.0
     )
 
@@ -494,8 +492,7 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
             "",
             "3. BIAS / FAIRNESS AUDIT",
             "-" * 40,
-            "Sensitive attributes audited: gender, extracurricular_activities",
-            "(Note: this dataset has no department/category column.)",
+            "Sensitive attributes audited: gender, branch, college_tier, volunteer_experience",
             "",
             "Group-wise false negative rates (FNR):",
         ]
@@ -511,15 +508,15 @@ def write_fairness_report(fairness_df, mean_abs_shap, cal_metrics):
     lines.extend(
         [
             "",
-            f"  Gender FNR gap (max − min): {gender_fnr_gap:.4f}",
-            f"  Extracurricular FNR gap:    {extrac_fnr_gap:.4f}",
+            f"  Gender FNR gap (max − min):    {gender_fnr_gap:.4f}",
+            f"  Volunteer Exp FNR gap:         {vol_fnr_gap:.4f}",
             "",
             "4. PROPOSED MITIGATIONS",
             "-" * 40,
         ]
     )
 
-    if gender_fnr_gap > 0.05 or extrac_fnr_gap > 0.05:
+    if gender_fnr_gap > 0.05 or vol_fnr_gap > 0.05:
         lines.extend(
             [
                 "  Detected meaningful FNR disparity across groups. Proposed mitigations:",

@@ -38,7 +38,7 @@ INTERVENTION_KNOBS = [
         "invert": True,
     },
     {
-        "column": "entrance_exam_score",
+        "column": "aptitude_score",
         "label": "Entrance Exam Coaching Boost (+points)",
         "min": 0.0,
         "max": 30.0,
@@ -46,7 +46,7 @@ INTERVENTION_KNOBS = [
         "default": 0.0,
     },
     {
-        "column": "technical_skill_score",
+        "column": "coding_skill_score",
         "label": "Technical Skill Workshop (+points)",
         "min": 0.0,
         "max": 30.0,
@@ -54,7 +54,7 @@ INTERVENTION_KNOBS = [
         "default": 0.0,
     },
     {
-        "column": "certifications",
+        "column": "certifications_count",
         "label": "Sponsored Certification Drive (+certs)",
         "min": 0.0,
         "max": 5.0,
@@ -62,7 +62,7 @@ INTERVENTION_KNOBS = [
         "default": 0.0,
     },
     {
-        "column": "live_projects",
+        "column": "projects_count",
         "label": "Capstone Project Workshop (+projects)",
         "min": 0.0,
         "max": 3.0,

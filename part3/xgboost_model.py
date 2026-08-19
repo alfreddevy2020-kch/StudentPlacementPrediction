@@ -481,32 +481,22 @@ print("\n" + "-" * 50)
 print("[10] Saving preprocessor ...")
 print("-" * 50)
 
-# Rebuild and save the preprocessor so the sample prediction pipeline works
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+# Copy canonical preprocessor from part2/models/ to part3/models/
+import shutil
+from pathlib import Path
+from feature_engineering import engineer_features
 
-categorical_features = ["gender", "extracurricular_activities"]
-numerical_features = [
-    "ssc_percentage", "hsc_percentage", "degree_percentage", "cgpa",
-    "entrance_exam_score", "technical_skill_score", "soft_skill_score",
-    "internship_count", "live_projects", "work_experience_months",
-    "certifications", "attendance_percentage", "backlogs",
-]
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("numerical", StandardScaler(), numerical_features),
-        ("categorical", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
-    ]
-)
-
-raw_df = pd.read_csv("data/raw/student_placement.csv")
-raw_df = raw_df.drop(columns=["student_id", "salary_package_lpa"])
-X_raw = raw_df.drop(columns=["placement_status"])
-preprocessor.fit(X_raw)
-
-joblib.dump(preprocessor, "part3/models/preprocessor.joblib")
-print("  Saved preprocessor: part3/models/preprocessor.joblib")
+src_prep = Path("part2/models/preprocessor.joblib")
+dst_prep = Path("part3/models/preprocessor.joblib")
+if src_prep.exists():
+    shutil.copy(src_prep, dst_prep)
+    preprocessor = joblib.load(dst_prep)
+    print(f"  Copied canonical preprocessor: {dst_prep}")
+elif dst_prep.exists():
+    preprocessor = joblib.load(dst_prep)
+    print(f"  Loaded preprocessor: {dst_prep}")
+else:
+    preprocessor = None
 
 # ============================================================
 # 11. PREDICTION ON SAMPLE INPUT
@@ -517,27 +507,36 @@ print("[11] Sample Prediction ...")
 print("-" * 50)
 
 sample_input = pd.DataFrame([{
-    "ssc_percentage":              82.5,
-    "hsc_percentage":              79.2,
-    "degree_percentage":           76.8,
+    "age":                         21,
     "cgpa":                        8.1,
-    "attendance_percentage":       88,
+    "attendance_percentage":       88.0,
     "backlogs":                    0,
-    "entrance_exam_score":         84,
-    "technical_skill_score":       78,
-    "soft_skill_score":            81,
-    "certifications":              4,
-    "live_projects":               3,
-    "internship_count":            2,
-    "work_experience_months":      0,
+    "coding_skill_score":          82.0,
+    "aptitude_score":              78.0,
+    "communication_skill_score":   79.0,
+    "logical_reasoning_score":     76.0,
+    "mock_interview_score":        75.0,
+    "internships_count":           2,
+    "projects_count":              3,
+    "certifications_count":        4,
+    "hackathons_participated":     2,
+    "github_repos":                12,
+    "linkedin_connections":        250,
+    "extracurricular_score":       70.0,
+    "leadership_score":            65.0,
+    "sleep_hours":                 7.0,
+    "study_hours_per_day":         5.0,
     "gender":                      "Male",
-    "extracurricular_activities":  "Yes",
+    "branch":                      "CSE",
+    "college_tier":                "Tier 1",
+    "volunteer_experience":        "Yes",
 }])
 
-sample_processed = preprocessor.transform(sample_input)
-
-sample_proba = best_xgb.predict_proba(sample_processed)[0]
-pred_label = "Placed" if sample_proba[1] >= 0.5 else "Not Placed"
+if preprocessor is not None:
+    sample_engineered = engineer_features(sample_input)
+    sample_processed = preprocessor.transform(sample_engineered)
+    sample_proba = best_xgb.predict_proba(sample_processed)[0]
+    pred_label = "Placed" if sample_proba[1] >= 0.5 else "Not Placed"
 pred_status = 1 if sample_proba[1] >= 0.5 else 0
 
 if sample_proba[1] >= 0.9:

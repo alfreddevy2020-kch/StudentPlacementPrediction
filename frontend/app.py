@@ -32,8 +32,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-# Add frontend dir to path so local imports work
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Add repo root and frontend dir to sys.path so local imports work
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = Path(__file__).resolve().parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+if str(FRONTEND_DIR) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_DIR))
 
 from batch_predictor import (
     BatchPredictor,
@@ -290,21 +295,36 @@ with st.sidebar:
         "Gender", gender_options, default="ALL", key="filter_gender"
     )
 
-    # Extracurricular filter
-    extra_options = ["ALL"] + sorted(
-        raw_df["extracurricular_activities"].dropna().unique().tolist()
+    # Branch filter
+    branch_options = ["ALL"] + sorted(raw_df["branch"].dropna().unique().tolist()) if "branch" in raw_df.columns else ["ALL"]
+    selected_branch = st.pills(
+        "Branch", branch_options, default="ALL", key="filter_branch"
     )
-    selected_extra = st.pills(
-        "Extracurriculars", extra_options, default="ALL", key="filter_extra"
+
+    # College Tier filter
+    tier_options = ["ALL"] + sorted(raw_df["college_tier"].dropna().unique().tolist()) if "college_tier" in raw_df.columns else ["ALL"]
+    selected_tier = st.pills(
+        "College Tier", tier_options, default="ALL", key="filter_tier"
+    )
+
+    # Volunteer Experience filter
+    vol_col = "volunteer_experience" if "volunteer_experience" in raw_df.columns else "gender"
+    vol_options = ["ALL"] + sorted(raw_df[vol_col].dropna().unique().tolist())
+    selected_vol = st.pills(
+        "Volunteer Experience", vol_options, default="ALL", key="filter_vol"
     )
 
     # Apply filters
     filtered_df = raw_df.copy()
     if selected_gender and selected_gender != "ALL":
         filtered_df = filtered_df[filtered_df["gender"] == selected_gender]
-    if selected_extra and selected_extra != "ALL":
+    if selected_branch and selected_branch != "ALL":
+        filtered_df = filtered_df[filtered_df["branch"] == selected_branch]
+    if selected_tier and selected_tier != "ALL":
+        filtered_df = filtered_df[filtered_df["college_tier"] == selected_tier]
+    if selected_vol and selected_vol != "ALL" and "volunteer_experience" in filtered_df.columns:
         filtered_df = filtered_df[
-            filtered_df["extracurricular_activities"] == selected_extra
+            filtered_df["volunteer_experience"] == selected_vol
         ]
 
     cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
@@ -553,11 +573,13 @@ with tab1:
             display_cols = [
                 "student_id",
                 "gender",
+                "branch",
+                "college_tier",
                 "cgpa",
                 "attendance_percentage",
                 "backlogs",
-                "technical_skill_score",
-                "certifications",
+                "coding_skill_score",
+                "certifications_count",
                 "placement_prob",
                 "risk_tier",
                 "predicted_status",
@@ -570,6 +592,9 @@ with tab1:
                 ),
                 "cgpa": st.column_config.ProgressColumn(
                     "CGPA", format="%.1f", min_value=0, max_value=10,
+                ),
+                "coding_skill_score": st.column_config.ProgressColumn(
+                    "Coding Score", format="%.0f", min_value=0, max_value=100,
                 ),
                 "placement_prob": st.column_config.ProgressColumn(
                     "Placement likelihood",
@@ -642,117 +667,135 @@ with tab2:
             student_data = {"student_id": 99999}
 
             # Categorical attributes
-            st.markdown("**Categorical attributes**")
-            cat_c1, cat_c2 = st.columns(2)
-            with cat_c1:
+            st.markdown("**Demographics & Institution**")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
                 student_data["gender"] = st.selectbox(
-                    "Gender",
-                    options=["Male", "Female"],
-                    key="diag_gender",
+                    "Gender", options=["Male", "Female"], key="diag_gender"
                 )
-            with cat_c2:
-                student_data["extracurricular_activities"] = st.selectbox(
-                    "Extracurricular Activities",
-                    options=["Yes", "No"],
-                    key="diag_extra",
+            with c2:
+                branch_list = sorted(raw_df["branch"].dropna().unique().tolist()) if "branch" in raw_df.columns else ["CSE", "IT", "ECE", "EEE", "Mechanical", "Civil"]
+                student_data["branch"] = st.selectbox(
+                    "Branch", options=branch_list, key="diag_branch"
+                )
+            with c3:
+                tier_list = sorted(raw_df["college_tier"].dropna().unique().tolist()) if "college_tier" in raw_df.columns else ["Tier 1", "Tier 2", "Tier 3"]
+                student_data["college_tier"] = st.selectbox(
+                    "College Tier", options=tier_list, key="diag_tier"
+                )
+            with c4:
+                student_data["volunteer_experience"] = st.selectbox(
+                    "Volunteer Experience", options=["Yes", "No"], key="diag_vol"
                 )
 
-            # Numerical attributes
-            st.markdown("**Academic performance**")
+            # Academic Performance
+            st.markdown("**Academic & Core Profile**")
             ac1, ac2, ac3, ac4 = st.columns(4)
             with ac1:
                 student_data["cgpa"] = st.slider(
                     "Current CGPA",
                     0.0, 10.0,
-                    value=st.session_state.get("diag_cgpa", 7.0),
+                    value=float(st.session_state.get("diag_cgpa", 7.5)),
                     step=0.1,
                     key="diag_cgpa_slider",
                 )
             with ac2:
-                student_data["ssc_percentage"] = st.slider(
-                    "SSC (10th) %",
-                    0.0, 100.0,
-                    value=float(st.session_state.get("diag_ssc_percentage", 75.0)),
-                    step=1.0,
-                    key="diag_ssc_slider",
-                )
-            with ac3:
-                student_data["hsc_percentage"] = st.slider(
-                    "HSC (12th) %",
-                    0.0, 100.0,
-                    value=float(st.session_state.get("diag_hsc_percentage", 75.0)),
-                    step=1.0,
-                    key="diag_hsc_slider",
-                )
-            with ac4:
-                student_data["degree_percentage"] = st.slider(
-                    "Degree %",
-                    0.0, 100.0,
-                    value=float(st.session_state.get("diag_degree_percentage", 72.0)),
-                    step=1.0,
-                    key="diag_degree_slider",
-                )
-
-            st.markdown("**Skills & tests**")
-            sk1, sk2, sk3, sk4 = st.columns(4)
-            with sk1:
-                student_data["entrance_exam_score"] = st.slider(
-                    "Entrance Exam Score",
-                    0.0, 100.0, 80.0, 1.0,
-                    key="diag_entrance",
-                )
-            with sk2:
-                student_data["technical_skill_score"] = st.slider(
-                    "Technical Skill Score",
-                    0.0, 100.0, 75.0, 1.0,
-                    key="diag_tech",
-                )
-            with sk3:
-                student_data["soft_skill_score"] = st.slider(
-                    "Soft Skill Score",
-                    0.0, 100.0, 75.0, 1.0,
-                    key="diag_soft",
-                )
-            with sk4:
                 student_data["attendance_percentage"] = st.slider(
                     "Attendance %",
-                    0.0, 100.0, 85.0, 1.0,
-                    key="diag_attendance",
+                    0.0, 100.0,
+                    value=float(st.session_state.get("diag_attendance", 85.0)),
+                    step=1.0,
+                    key="diag_att_slider",
+                )
+            with ac3:
+                student_data["backlogs"] = st.number_input(
+                    "Active Backlogs", 0, 20,
+                    value=int(st.session_state.get("diag_backlogs", 0)),
+                    key="diag_backlogs_input"
+                )
+            with ac4:
+                student_data["age"] = st.number_input(
+                    "Age", 18, 40,
+                    value=int(st.session_state.get("diag_age", 21)),
+                    key="diag_age_input"
                 )
 
-            st.markdown("**Experience & credentials**")
-            ex1, ex2, ex3, ex4, ex5 = st.columns(5)
+            # Skills & Test Scores
+            st.markdown("**Skills & Assessment Scores**")
+            sk1, sk2, sk3, sk4, sk5 = st.columns(5)
+            with sk1:
+                student_data["coding_skill_score"] = st.slider(
+                    "Coding Score", 0.0, 100.0, 75.0, 1.0, key="diag_coding"
+                )
+            with sk2:
+                student_data["aptitude_score"] = st.slider(
+                    "Aptitude Score", 0.0, 100.0, 75.0, 1.0, key="diag_aptitude"
+                )
+            with sk3:
+                student_data["communication_skill_score"] = st.slider(
+                    "Communication Score", 0.0, 100.0, 75.0, 1.0, key="diag_comm"
+                )
+            with sk4:
+                student_data["logical_reasoning_score"] = st.slider(
+                    "Logical Reasoning", 0.0, 100.0, 75.0, 1.0, key="diag_logical"
+                )
+            with sk5:
+                student_data["mock_interview_score"] = st.slider(
+                    "Mock Interview", 0.0, 100.0, 70.0, 1.0, key="diag_mock"
+                )
+
+            # Experience & Professional Presence
+            st.markdown("**Experience & Professional Presence**")
+            ex1, ex2, ex3, ex4, ex5, ex6 = st.columns(6)
             with ex1:
-                student_data["backlogs"] = st.number_input(
-                    "Active Backlogs", 0, 20, 0, key="diag_backlogs"
+                student_data["internships_count"] = st.number_input(
+                    "Internships", 0, 10,
+                    value=int(st.session_state.get("diag_internships_count", 1)),
+                    key="diag_intern_input"
                 )
             with ex2:
-                student_data["certifications"] = st.number_input(
-                    "Certifications",
-                    0, 20,
-                    value=int(st.session_state.get("diag_certifications", 1)),
-                    key="diag_certs_input",
+                student_data["projects_count"] = st.number_input(
+                    "Projects", 0, 20,
+                    value=int(st.session_state.get("diag_projects_count", 2)),
+                    key="diag_proj_input"
                 )
             with ex3:
-                student_data["live_projects"] = st.number_input(
-                    "Live Projects",
-                    0, 20,
-                    value=int(st.session_state.get("diag_live_projects", 1)),
-                    key="diag_projects_input",
+                student_data["certifications_count"] = st.number_input(
+                    "Certifications", 0, 20,
+                    value=int(st.session_state.get("diag_certifications_count", 2)),
+                    key="diag_certs_input"
                 )
             with ex4:
-                student_data["internship_count"] = st.number_input(
-                    "Internships",
-                    0, 10,
-                    value=int(st.session_state.get("diag_internship_count", 0)),
-                    key="diag_intern_input",
+                student_data["hackathons_participated"] = st.number_input(
+                    "Hackathons", 0, 15, 1, key="diag_hack_input"
                 )
             with ex5:
-                student_data["work_experience_months"] = st.number_input(
-                    "Work Exp (months)",
-                    0, 60,
-                    value=int(st.session_state.get("diag_work_experience_months", 0)),
-                    key="diag_workexp_input",
+                student_data["github_repos"] = st.number_input(
+                    "GitHub Repos", 0, 100, 8, key="diag_git_input"
+                )
+            with ex6:
+                student_data["linkedin_connections"] = st.number_input(
+                    "LinkedIn Conn.", 0, 1000, 200, key="diag_li_input"
+                )
+
+            # Leadership, Activities & Habits
+            st.markdown("**Leadership, Extracurricular & Lifestyle**")
+            ls1, ls2, ls3, ls4 = st.columns(4)
+            with ls1:
+                student_data["extracurricular_score"] = st.slider(
+                    "Extracurricular Score", 0.0, 100.0, 65.0, 1.0, key="diag_extra_score"
+                )
+            with ls2:
+                student_data["leadership_score"] = st.slider(
+                    "Leadership Score", 0.0, 100.0, 60.0, 1.0, key="diag_lead_score"
+                )
+            with ls3:
+                student_data["study_hours_per_day"] = st.slider(
+                    "Study Hours / Day", 0.0, 16.0, 4.0, 0.5, key="diag_study_hours"
+                )
+            with ls4:
+                student_data["sleep_hours"] = st.slider(
+                    "Sleep Hours / Day", 0.0, 16.0, 7.0, 0.5, key="diag_sleep_hours"
                 )
 
     # Evaluate single candidate
@@ -846,10 +889,10 @@ with tab2:
             radar_specs = [
                 {"column": "cgpa", "label": "CGPA (×10)", "scale_factor": 10.0},
                 {"column": "attendance_percentage", "label": "Attendance %", "scale_factor": 1.0},
-                {"column": "technical_skill_score", "label": "Technical Skill", "scale_factor": 1.0},
-                {"column": "soft_skill_score", "label": "Soft Skill", "scale_factor": 1.0},
-                {"column": "entrance_exam_score", "label": "Entrance Exam", "scale_factor": 1.0},
-                {"column": "certifications", "label": "Certs (×20)", "scale_factor": 20.0},
+                {"column": "coding_skill_score", "label": "Coding Skill", "scale_factor": 1.0},
+                {"column": "communication_skill_score", "label": "Communication", "scale_factor": 1.0},
+                {"column": "aptitude_score", "label": "Aptitude", "scale_factor": 1.0},
+                {"column": "certifications_count", "label": "Certs (×20)", "scale_factor": 20.0},
             ]
 
             # Compute placed peers benchmark
@@ -953,29 +996,29 @@ with tab2:
             "sim_value": 78.0,
         },
         {
-            "condition": lambda s: s.get("technical_skill_score", 100) < 70,
+            "condition": lambda s: s.get("coding_skill_score", 100) < 70,
             "priority": "HIGH",
-            "title": "Boost Technical Skills",
-            "action": "Complete coding bootcamp and hackathon practice to improve technical readiness.",
-            "sim_column": "technical_skill_score",
+            "title": "Boost Coding & Technical Skills",
+            "action": "Complete coding bootcamp and competitive programming to improve technical readiness.",
+            "sim_column": "coding_skill_score",
             "sim_op": "add",
             "sim_value": 15.0,
         },
         {
-            "condition": lambda s: s.get("certifications", 10) < 2,
+            "condition": lambda s: s.get("certifications_count", 10) < 2,
             "priority": "MEDIUM",
             "title": "Pursue Industry Certifications",
             "action": "Earn at least 2 industry certifications (AWS, Azure, Google Cloud, etc.).",
-            "sim_column": "certifications",
+            "sim_column": "certifications_count",
             "sim_op": "add",
             "sim_value": 2.0,
         },
         {
-            "condition": lambda s: s.get("live_projects", 10) < 1,
+            "condition": lambda s: s.get("projects_count", 10) < 2,
             "priority": "MEDIUM",
             "title": "Build Live Projects",
-            "action": "Complete at least one end-to-end deployed project to demonstrate practical skills.",
-            "sim_column": "live_projects",
+            "action": "Complete at least two end-to-end deployed projects to demonstrate practical skills.",
+            "sim_column": "projects_count",
             "sim_op": "add",
             "sim_value": 1.0,
         },
@@ -989,11 +1032,11 @@ with tab2:
             "sim_value": 7.2,
         },
         {
-            "condition": lambda s: s.get("internship_count", 10) < 1,
+            "condition": lambda s: s.get("internships_count", 10) < 1,
             "priority": "MEDIUM",
             "title": "Secure an Internship",
             "action": "Apply for at least one internship to gain industry exposure before placements.",
-            "sim_column": "internship_count",
+            "sim_column": "internships_count",
             "sim_op": "add",
             "sim_value": 1.0,
         },
@@ -1111,7 +1154,7 @@ with tab3:
         # Grouped intervention sliders
         with st.container(border=True):
             st.markdown("#### 2. Academic interventions")
-            academic_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("attendance_percentage", "backlogs", "entrance_exam_score")]
+            academic_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("attendance_percentage", "backlogs", "aptitude_score")]
             interventions_dict = {}
             for knob in academic_knobs:
                 k_col = knob["column"]
@@ -1130,7 +1173,7 @@ with tab3:
 
         with st.container(border=True):
             st.markdown("#### 3. Experiential interventions")
-            exp_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("technical_skill_score", "certifications", "live_projects")]
+            exp_knobs = [k for k in INTERVENTION_KNOBS if k["column"] in ("coding_skill_score", "certifications_count", "projects_count")]
             for knob in exp_knobs:
                 k_col = knob["column"]
                 if k_col in target_slice.columns:
@@ -1277,18 +1320,22 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     import time
 
     bench_df = raw_df.copy()
-    target_col = "placement_status" if "placement_status" in bench_df.columns else "placed"
-    features_for_bench = [c for c in NUMERICAL_FEATURES + CATEGORICAL_FEATURES if c in bench_df.columns]
-
-    X_bench = bench_df[features_for_bench]
-    y_bench = bench_df[target_col]
+    if "placement_target" in bench_df.columns:
+        y_bench = bench_df["placement_target"]
+    elif "placement_status" in bench_df.columns:
+        if bench_df["placement_status"].dtype == object:
+            y_bench = bench_df["placement_status"].map({"Not Placed": 0, "Placed": 1})
+        else:
+            y_bench = bench_df["placement_status"]
+    else:
+        y_bench = pd.Series(0, index=bench_df.index)
 
     X_train_b, X_test_b, y_train_b, y_test_b = train_test_split(
-        X_bench, y_bench, test_size=0.20, random_state=42, stratify=y_bench
+        bench_df, y_bench, test_size=0.20, random_state=42, stratify=y_bench
     )
 
-    X_train_proc = predictor._preprocessor.transform(X_train_b)
-    X_test_proc = predictor._preprocessor.transform(X_test_b)
+    X_train_proc = predictor._preprocessor.transform(predictor._prepare_features(X_train_b))
+    X_test_proc = predictor._preprocessor.transform(predictor._prepare_features(X_test_b))
 
     comparison_matrix = []
     detailed_metrics = {}

@@ -7,12 +7,26 @@ This module enables the Streamlit dashboard to operate standalone
 without the FastAPI backend server.
 """
 
+import sys
 from pathlib import Path
 from typing import Dict, Optional
+
+# Ensure repository root is in sys.path for feature_engineering import
+BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from feature_engineering import (
+    engineer_features,
+    RAW_NUMERICAL_FEATURES,
+    RAW_CATEGORICAL_FEATURES,
+    ALL_NUMERICAL_FEATURES,
+)
 
 import joblib
 import numpy as np
 import pandas as pd
+
 
 
 # ── Artifact Paths ──────────────────────────────────────────────────────────
@@ -27,26 +41,8 @@ MODEL_PATHS: Dict[str, Path] = {
 
 # ── Feature columns expected by the fitted preprocessor ─────────────────────
 # These must exactly match what the ColumnTransformer was fitted on.
-NUMERICAL_FEATURES = [
-    "ssc_percentage",
-    "hsc_percentage",
-    "degree_percentage",
-    "cgpa",
-    "entrance_exam_score",
-    "technical_skill_score",
-    "soft_skill_score",
-    "internship_count",
-    "live_projects",
-    "work_experience_months",
-    "certifications",
-    "attendance_percentage",
-    "backlogs",
-]
-
-CATEGORICAL_FEATURES = [
-    "gender",
-    "extracurricular_activities",
-]
+NUMERICAL_FEATURES = ALL_NUMERICAL_FEATURES
+CATEGORICAL_FEATURES = RAW_CATEGORICAL_FEATURES
 
 ALL_FEATURES = NUMERICAL_FEATURES + CATEGORICAL_FEATURES
 
@@ -125,32 +121,12 @@ class BatchPredictor:
         return self._models.get(self._active_model_name)
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Build a DataFrame with exactly the columns the preprocessor expects,
-        in the correct order. Missing columns are filled with safe defaults.
-        """
+        df = engineer_features(df)  # adds the 18 derived columns first
         result = pd.DataFrame(index=df.index)
-
-        # Numerical features
-        for col in NUMERICAL_FEATURES:
-            if col in df.columns:
-                result[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-            else:
-                result[col] = 0.0
-
-        # Categorical features
-        if "gender" in df.columns:
-            result["gender"] = df["gender"].fillna("Male").astype(str)
-        else:
-            result["gender"] = "Male"
-
-        if "extracurricular_activities" in df.columns:
-            result["extracurricular_activities"] = (
-                df["extracurricular_activities"].fillna("No").astype(str)
-            )
-        else:
-            result["extracurricular_activities"] = "No"
-
+        for col in RAW_NUMERICAL_FEATURES + [c for c in NUMERICAL_FEATURES if c not in RAW_NUMERICAL_FEATURES]:
+            result[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0) if col in df.columns else 0.0
+        for col in CATEGORICAL_FEATURES:
+            result[col] = df[col].astype(str) if col in df.columns else ""
         return result
 
     def predict_probabilities(

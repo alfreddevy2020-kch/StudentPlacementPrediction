@@ -25,6 +25,7 @@ What matters is that all expected column names are present.
 """
 
 from __future__ import annotations
+from feature_engineering import engineer_features, RAW_NUMERICAL_FEATURES, RAW_CATEGORICAL_FEATURES
 
 import abc
 from pathlib import Path
@@ -34,41 +35,13 @@ import pandas as pd
 
 from api.schemas import PredictionResponse, StudentInput
 
-# ── Feature column names (must match what the ColumnTransformer was fitted on) ──
-NUMERICAL_FEATURES: list[str] = [
-    "ssc_percentage",
-    "hsc_percentage",
-    "degree_percentage",
-    "cgpa",
-    "entrance_exam_score",
-    "technical_skill_score",
-    "soft_skill_score",
-    "internship_count",
-    "live_projects",
-    "work_experience_months",
-    "certifications",
-    "attendance_percentage",
-    "backlogs",
-]
-
-CATEGORICAL_FEATURES: list[str] = [
-    "gender",
-    "extracurricular_activities",
-]
-
-ALL_FEATURES: list[str] = NUMERICAL_FEATURES + CATEGORICAL_FEATURES
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _input_to_dataframe(data: StudentInput) -> pd.DataFrame:
-    """
-    Convert a validated StudentInput into a single-row DataFrame.
-    Column names match the training dataset so the ColumnTransformer can
-    select numerical / categorical columns by name.
-    """
-    row = {col: [getattr(data, col)] for col in ALL_FEATURES}
-    return pd.DataFrame(row)
+    row = {col: [getattr(data, col)] for col in RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES}
+    return engineer_features(pd.DataFrame(row))
 
 
 def _derive_risk_level(prob_placed: float) -> str:
