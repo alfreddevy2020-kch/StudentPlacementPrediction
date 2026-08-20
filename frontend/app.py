@@ -1,27 +1,26 @@
 """
 CampusReady — Multi-Tab Executive Dashboard
 ===================================================
-Premium Streamlit dashboard with 3 tabs:
+Premium Streamlit dashboard with 4 tabs:
   Tab 1: Departmental Pulse & Readiness Analytics
   Tab 2: Per-Student Diagnostic & Skill-Gap Analysis
   Tab 3: Cohort What-If Policy Simulator
+  Tab 4: Upload & Analyze Cohort (CSV)
 
 Plus: Multi-Model Benchmark Comparison expander
 
-Ported from prediction.txt design system. Preserves resume upload
-functionality from original dashboard.
+Ported from prediction.txt design system.
 
 Usage:
     cd frontend
     streamlit run app.py
 
 Prerequisites:
-    - Model artifacts in part2/models/ and part3/models/
+    - Model artifacts in artifacts/production/ (or part2/models/ and
+      part3/models/ as a local-dev fallback)
     - Dataset at data/raw/student_placement.csv
 """
 
-import io
-import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -54,14 +53,6 @@ from feature_engineering import (
     TARGET_MAP,
     normalize_columns,
 )
-
-# Try importing pdfplumber for resume parsing (optional)
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
-
 
 # =============================================================================
 # 1. PAGE SETUP & THEME STYLING
@@ -124,110 +115,7 @@ RISK_COLORS = {
 
 
 # =============================================================================
-# 2. RESUME PARSING (preserved from original dashboard)
-# =============================================================================
-
-def extract_resume_data(pdf_bytes: bytes) -> dict:
-    """
-    Extract structured student data from a resume PDF using regex
-    heuristics. Returns a dict with keys matching sidebar widget keys;
-    values are None when the pattern is not found.
-    """
-    if not HAS_PDFPLUMBER:
-        return {}
-
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-
-    # Keys match the raw feature names, so callers can write them straight
-    # into st.session_state["diag_<key>"] to prefill the Tab 2 inputs.
-    result = {
-        "name": None,
-        "cgpa": None,
-        "ssc_marks": None,
-        "hsc_marks": None,
-        "workshops_certifications": None,
-        "internships": None,
-        "projects": None,
-    }
-
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-
-    # -- Name: first plausible line in the header --
-    skip_keywords = [
-        "@", "phone", "email", "address", "linkedin", "section",
-        "objective", "summary", "education", "experience", "skills",
-        "certification", "project", "contact", "profile",
-    ]
-    for line in lines[:6]:
-        if any(kw in line.lower() for kw in skip_keywords):
-            continue
-        cleaned = re.sub(
-            r"^(name|candidate|mr\.|ms\.|miss|shri)\s*[:\-]?\s*",
-            "", line, flags=re.IGNORECASE,
-        )
-        if cleaned and len(cleaned.split()) >= 2:
-            result["name"] = cleaned.strip().title()
-            break
-
-    # -- CGPA --
-    m = re.search(r"(?:cgpa|gpa)[:\s]*(\d+\.?\d*)", text, re.IGNORECASE)
-    if m:
-        result["cgpa"] = min(float(m.group(1)), 10.0)
-
-    # -- SSC (10th) percentage --
-    m = re.search(
-        r"(?:10th|tenth|ssc|class\s*x)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["ssc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- HSC (12th) percentage --
-    m = re.search(
-        r"(?:12th|twelfth|hsc|class\s*xii|xii)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["hsc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- Certifications / workshops count --
-    cert_match = re.search(
-        r"(?:certification|certificate|workshops?|courses?)[\\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if cert_match:
-        result["workshops_certifications"] = len(
-            re.findall(r"[-•*]\s*.+", cert_match.group(1))
-        )
-
-    # -- Internship count --
-    exp_match = re.search(
-        r"(?:experience|internship|work\s*history)[\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if exp_match:
-        result["internships"] = len(
-            re.findall(r"[-•*]\s*.+", exp_match.group(1))
-        )
-
-    # -- Projects --
-    proj_match = re.search(
-        r"(?:projects?|portfolio)[\s:]*\n((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if proj_match:
-        result["projects"] = len(
-            re.findall(r"[-•*]\s*.+", proj_match.group(1))
-        )
-
-    return result
-
-
-# =============================================================================
-# 3. SYSTEM BOOTSTRAP & CACHING
+# 2. SYSTEM BOOTSTRAP & CACHING
 # =============================================================================
 
 @st.cache_resource(show_spinner="Loading ML Models & Dataset...")
@@ -254,7 +142,7 @@ except Exception as load_err:
 
 
 # =============================================================================
-# 4. SIDEBAR CONTROLS
+# 3. SIDEBAR CONTROLS
 # =============================================================================
 with st.sidebar:
     st.markdown("### :material/school: CampusReady")
@@ -329,37 +217,9 @@ with st.sidebar:
     cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
     st.caption(f":material/groups: Active cohort: **{cohort_ratio}** students")
 
-    # Resume upload
-    st.space("small")
-    st.subheader(":material/upload_file: Resume upload")
-    if HAS_PDFPLUMBER:
-        resume_file = st.file_uploader(
-            "Upload resume (PDF)",
-            type=["pdf"],
-            help="Upload a student resume to auto-fill Tab 2 fields.",
-        )
-        if (
-            resume_file is not None
-            and st.session_state.get("_last_resume_file") != resume_file.name
-        ):
-            parsed = extract_resume_data(resume_file.getvalue())
-            st.session_state["_parsed"] = parsed
-            st.session_state["_last_resume_file"] = resume_file.name
-            for key, val in parsed.items():
-                if val is not None and key != "name":
-                    st.session_state[f"diag_{key}"] = val
-            if parsed.get("name"):
-                st.success(
-                    f"Parsed resume for **{parsed['name']}**",
-                    icon=":material/check_circle:",
-                )
-    else:
-        st.caption(":material/info: Install `pdfplumber` for resume auto-fill support.")
-        resume_file = None
-
 
 # =============================================================================
-# 5. BATCH PREDICTIONS ON FILTERED COHORT
+# 4. BATCH PREDICTIONS ON FILTERED COHORT
 # =============================================================================
 if not filtered_df.empty:
     try:
@@ -392,7 +252,7 @@ if not filtered_df.empty:
 
 
 # =============================================================================
-# 6. DASHBOARD HEADER
+# 5. DASHBOARD HEADER
 # =============================================================================
 st.badge(
     "Student Placement Prediction System",
@@ -711,7 +571,7 @@ with tab2:
                 student_data["cgpa"] = st.slider(
                     "Current CGPA",
                     6.5, 9.1,
-                    value=float(st.session_state.get("diag_cgpa", 7.7)),
+                    value=7.7,
                     step=0.1,
                     key="diag_cgpa_slider",
                 )
@@ -719,7 +579,7 @@ with tab2:
                 student_data["ssc_marks"] = st.slider(
                     "SSC / Class 10 %",
                     55.0, 90.0,
-                    value=float(st.session_state.get("diag_ssc_marks", 70.0)),
+                    value=70.0,
                     step=1.0,
                     key="diag_ssc_slider",
                 )
@@ -727,7 +587,7 @@ with tab2:
                 student_data["hsc_marks"] = st.slider(
                     "HSC / Class 12 %",
                     57.0, 88.0,
-                    value=float(st.session_state.get("diag_hsc_marks", 74.0)),
+                    value=74.0,
                     step=1.0,
                     key="diag_hsc_slider",
                 )
@@ -750,19 +610,19 @@ with tab2:
             with ex1:
                 student_data["internships"] = st.number_input(
                     "Internships", 0, 2,
-                    value=int(st.session_state.get("diag_internships", 1)),
+                    value=1,
                     key="diag_intern_input"
                 )
             with ex2:
                 student_data["projects"] = st.number_input(
                     "Projects", 0, 3,
-                    value=int(st.session_state.get("diag_projects", 2)),
+                    value=2,
                     key="diag_proj_input"
                 )
             with ex3:
                 student_data["workshops_certifications"] = st.number_input(
                     "Workshops / certifications", 0, 3,
-                    value=int(st.session_state.get("diag_workshops_certifications", 1)),
+                    value=1,
                     key="diag_certs_input"
                 )
 
