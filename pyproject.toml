@@ -48,6 +48,7 @@ ignore = [
 "part4/explainability_fairness.py" = ["E402"]
 "part8/evaluation_suite.py" = ["E402"]
 "scripts/train_models_fast.py" = ["E402"]
+"tests/test_custom_csv_simulation.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["api", "feature_engineering"]
