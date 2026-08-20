@@ -43,6 +43,7 @@ ignore = [
 "part3/predict_sample.py" = ["E402"]
 "part3/xgboost_model.py" = ["E402"]
 "part4/explainability_fairness.py" = ["E402"]
+"role5/train_role5.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["api", "feature_engineering"]

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from feature_engineering import load_raw_dataset
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from .reporting import run_role5_analysis
+from feature_engineering import load_raw_dataset
+from role5.reporting import run_role5_analysis
 
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "results"
 

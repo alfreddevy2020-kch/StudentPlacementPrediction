@@ -110,6 +110,8 @@ part3/model_results/
 part4/models/
 part4/explainability_results/
 
+role5/results/
+
 # ==============================
 # Streamlit AI Agent Skills
 # ==============================

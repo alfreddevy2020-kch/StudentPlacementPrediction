@@ -37,3 +37,15 @@
 - Added `docs/role5_methodology.md` and marked the retained `part6/` prototype
   notes as superseded rather than using its legacy app replacement.
 - Removed deprecated `use_container_width` calls from the maintained app.
+
+## 2026-08-20 — Phase 6 and Phase 7 monitoring integrity, tests, and completion
+
+- Renamed monitoring framing to prediction-distribution shift monitoring across
+  `docs/DEPLOYMENT.md`, `api/drift.py`, `api/main.py`, and test suites.
+- Validated real held-out histogram persistence (`probability_bin_edges` and
+  `probability_bin_counts`) in `baseline_metrics.json`.
+- Added `tests/test_role5_integration.py` for end-to-end Role 5 workflow testing.
+- Enabled direct and module CLI invocation for `role5/train_role5.py` and
+  configured `pyproject.toml` lint rules.
+- Re-verified full test suite (`88 passed`), model smoke tests, and linter
+  cleanliness (`0 errors`).

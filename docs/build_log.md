@@ -47,3 +47,31 @@
 - `frontend/app.py` now has a fifth gated Programme insights tab. It uses a
   cached copy of the built-in cohort only and does not load Role 5 work until
   `role5_load_analysis` is enabled. Tab 4 was preserved.
+
+## 2026-08-20 — Phase 6 prediction-distribution shift monitoring verification
+
+- Prediction-distribution shift monitor in `api/drift.py` verified using real
+  persisted probability bin counts from `baseline_metrics.json`.
+- Regenerated real probability bin edges and counts in baseline metrics via
+  `scripts/generate_baseline_metrics.py`.
+- Verified graceful failure with status `"baseline_unavailable"` when real
+  histograms are absent (no synthetic distributions fabricated).
+- Standard-deviation key consistency (`probability_standard_deviation`)
+  verified across schemas and baseline generators.
+- Unit tests in `tests/test_drift.py` and `tests/test_baseline_metrics.py`
+  passed.
+
+## 2026-08-20 — Phase 7 tests, documentation, and artifact verification
+
+- Full test suite execution under Python 3.14.6 environment: `88 passed` in
+  14.95 seconds across all unit, drift, baseline, and integration suites.
+- Added `tests/test_role5_integration.py` covering end-to-end Role 5 reporting,
+  output schema validation, and artifact persistence.
+- Verified standalone script and module execution for `role5/train_role5.py`
+  generating reproducible artifacts in `role5/results/` (silhouette=0.346,
+  ARI stability=0.988, ATE=14.45 pp, diagnostics passed).
+- Production model smoke tests in `scripts/smoke_test_models.py` passed for all
+  three classifiers (Logistic Regression, Random Forest, XGBoost).
+- Linter `ruff check .` passed with 0 errors.
+- Verified `docs/role5_methodology.md`, `docs/DEPLOYMENT.md`, `SCHEMA.md`, and
+  `README.md` terminology, estimands, and non-causal guardrails.
