@@ -1,27 +1,26 @@
 """
 CampusReady — Multi-Tab Executive Dashboard
 ===================================================
-Premium Streamlit dashboard with 3 tabs:
+Premium Streamlit dashboard with 4 tabs:
   Tab 1: Departmental Pulse & Readiness Analytics
   Tab 2: Per-Student Diagnostic & Skill-Gap Analysis
   Tab 3: Cohort What-If Policy Simulator
+  Tab 4: Upload & Analyze Cohort (CSV)
 
 Plus: Multi-Model Benchmark Comparison expander
 
-Ported from prediction.txt design system. Preserves resume upload
-functionality from original dashboard.
+Ported from prediction.txt design system.
 
 Usage:
     cd frontend
     streamlit run app.py
 
 Prerequisites:
-    - Model artifacts in part2/models/ and part3/models/
+    - Model artifacts in artifacts/production/ (or part2/models/ and
+      part3/models/ as a local-dev fallback)
     - Dataset at data/raw/student_placement.csv
 """
 
-import io
-import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -54,14 +53,6 @@ from feature_engineering import (
     TARGET_MAP,
     normalize_columns,
 )
-
-# Try importing pdfplumber for resume parsing (optional)
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
-
 
 # =============================================================================
 # 1. PAGE SETUP & THEME STYLING
@@ -124,110 +115,7 @@ RISK_COLORS = {
 
 
 # =============================================================================
-# 2. RESUME PARSING (preserved from original dashboard)
-# =============================================================================
-
-def extract_resume_data(pdf_bytes: bytes) -> dict:
-    """
-    Extract structured student data from a resume PDF using regex
-    heuristics. Returns a dict with keys matching sidebar widget keys;
-    values are None when the pattern is not found.
-    """
-    if not HAS_PDFPLUMBER:
-        return {}
-
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-
-    # Keys match the raw feature names, so callers can write them straight
-    # into st.session_state["diag_<key>"] to prefill the Tab 2 inputs.
-    result = {
-        "name": None,
-        "cgpa": None,
-        "ssc_marks": None,
-        "hsc_marks": None,
-        "workshops_certifications": None,
-        "internships": None,
-        "projects": None,
-    }
-
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-
-    # -- Name: first plausible line in the header --
-    skip_keywords = [
-        "@", "phone", "email", "address", "linkedin", "section",
-        "objective", "summary", "education", "experience", "skills",
-        "certification", "project", "contact", "profile",
-    ]
-    for line in lines[:6]:
-        if any(kw in line.lower() for kw in skip_keywords):
-            continue
-        cleaned = re.sub(
-            r"^(name|candidate|mr\.|ms\.|miss|shri)\s*[:\-]?\s*",
-            "", line, flags=re.IGNORECASE,
-        )
-        if cleaned and len(cleaned.split()) >= 2:
-            result["name"] = cleaned.strip().title()
-            break
-
-    # -- CGPA --
-    m = re.search(r"(?:cgpa|gpa)[:\s]*(\d+\.?\d*)", text, re.IGNORECASE)
-    if m:
-        result["cgpa"] = min(float(m.group(1)), 10.0)
-
-    # -- SSC (10th) percentage --
-    m = re.search(
-        r"(?:10th|tenth|ssc|class\s*x)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["ssc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- HSC (12th) percentage --
-    m = re.search(
-        r"(?:12th|twelfth|hsc|class\s*xii|xii)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["hsc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- Certifications / workshops count --
-    cert_match = re.search(
-        r"(?:certification|certificate|workshops?|courses?)[\\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if cert_match:
-        result["workshops_certifications"] = len(
-            re.findall(r"[-•*]\s*.+", cert_match.group(1))
-        )
-
-    # -- Internship count --
-    exp_match = re.search(
-        r"(?:experience|internship|work\s*history)[\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if exp_match:
-        result["internships"] = len(
-            re.findall(r"[-•*]\s*.+", exp_match.group(1))
-        )
-
-    # -- Projects --
-    proj_match = re.search(
-        r"(?:projects?|portfolio)[\s:]*\n((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if proj_match:
-        result["projects"] = len(
-            re.findall(r"[-•*]\s*.+", proj_match.group(1))
-        )
-
-    return result
-
-
-# =============================================================================
-# 3. SYSTEM BOOTSTRAP & CACHING
+# 2. SYSTEM BOOTSTRAP & CACHING
 # =============================================================================
 
 @st.cache_resource(show_spinner="Loading ML Models & Dataset...")
@@ -254,7 +142,7 @@ except Exception as load_err:
 
 
 # =============================================================================
-# 4. SIDEBAR CONTROLS
+# 3. SIDEBAR CONTROLS
 # =============================================================================
 with st.sidebar:
     st.markdown("### :material/school: CampusReady")
@@ -329,37 +217,9 @@ with st.sidebar:
     cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
     st.caption(f":material/groups: Active cohort: **{cohort_ratio}** students")
 
-    # Resume upload
-    st.space("small")
-    st.subheader(":material/upload_file: Resume upload")
-    if HAS_PDFPLUMBER:
-        resume_file = st.file_uploader(
-            "Upload resume (PDF)",
-            type=["pdf"],
-            help="Upload a student resume to auto-fill Tab 2 fields.",
-        )
-        if (
-            resume_file is not None
-            and st.session_state.get("_last_resume_file") != resume_file.name
-        ):
-            parsed = extract_resume_data(resume_file.getvalue())
-            st.session_state["_parsed"] = parsed
-            st.session_state["_last_resume_file"] = resume_file.name
-            for key, val in parsed.items():
-                if val is not None and key != "name":
-                    st.session_state[f"diag_{key}"] = val
-            if parsed.get("name"):
-                st.success(
-                    f"Parsed resume for **{parsed['name']}**",
-                    icon=":material/check_circle:",
-                )
-    else:
-        st.caption(":material/info: Install `pdfplumber` for resume auto-fill support.")
-        resume_file = None
-
 
 # =============================================================================
-# 5. BATCH PREDICTIONS ON FILTERED COHORT
+# 4. BATCH PREDICTIONS ON FILTERED COHORT
 # =============================================================================
 if not filtered_df.empty:
     try:
@@ -392,7 +252,7 @@ if not filtered_df.empty:
 
 
 # =============================================================================
-# 6. DASHBOARD HEADER
+# 5. DASHBOARD HEADER
 # =============================================================================
 st.badge(
     "Student Placement Prediction System",
@@ -711,7 +571,7 @@ with tab2:
                 student_data["cgpa"] = st.slider(
                     "Current CGPA",
                     6.5, 9.1,
-                    value=float(st.session_state.get("diag_cgpa", 7.7)),
+                    value=7.7,
                     step=0.1,
                     key="diag_cgpa_slider",
                 )
@@ -719,7 +579,7 @@ with tab2:
                 student_data["ssc_marks"] = st.slider(
                     "SSC / Class 10 %",
                     55.0, 90.0,
-                    value=float(st.session_state.get("diag_ssc_marks", 70.0)),
+                    value=70.0,
                     step=1.0,
                     key="diag_ssc_slider",
                 )
@@ -727,7 +587,7 @@ with tab2:
                 student_data["hsc_marks"] = st.slider(
                     "HSC / Class 12 %",
                     57.0, 88.0,
-                    value=float(st.session_state.get("diag_hsc_marks", 74.0)),
+                    value=74.0,
                     step=1.0,
                     key="diag_hsc_slider",
                 )
@@ -750,19 +610,19 @@ with tab2:
             with ex1:
                 student_data["internships"] = st.number_input(
                     "Internships", 0, 2,
-                    value=int(st.session_state.get("diag_internships", 1)),
+                    value=1,
                     key="diag_intern_input"
                 )
             with ex2:
                 student_data["projects"] = st.number_input(
                     "Projects", 0, 3,
-                    value=int(st.session_state.get("diag_projects", 2)),
+                    value=2,
                     key="diag_proj_input"
                 )
             with ex3:
                 student_data["workshops_certifications"] = st.number_input(
                     "Workshops / certifications", 0, 3,
-                    value=int(st.session_state.get("diag_workshops_certifications", 1)),
+                    value=1,
                     key="diag_certs_input"
                 )
 
@@ -1603,6 +1463,41 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     X_train_proc = predictor._preprocessor.transform(predictor._prepare_features(X_train_b))
     X_test_proc = predictor._preprocessor.transform(predictor._prepare_features(X_test_b))
 
+    # Feature names come from the shared preprocessor, so they are identical
+    # for every model - resolve them once, ahead of the per-model loop.
+    feat_names_out = []
+    for name, trans, cols in predictor._preprocessor.transformers_:
+        if name == "numerical":
+            feat_names_out.extend(cols)
+        elif name == "categorical":
+            if hasattr(trans, "get_feature_names_out"):
+                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
+            elif hasattr(trans, "categories_"):
+                for i, col in enumerate(cols):
+                    for cat in trans.categories_[i]:
+                        feat_names_out.append(f"{col}_{cat}")
+
+    def extract_top_features(model_obj) -> list:
+        """Top-10 global importances (%) for one model, or [] if unsupported."""
+        if hasattr(model_obj, "feature_importances_"):
+            raw_imp = model_obj.feature_importances_
+        elif hasattr(model_obj, "coef_"):
+            raw_imp = np.abs(model_obj.coef_[0])
+        else:
+            return []
+        total = np.sum(raw_imp)
+        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
+        f_names = (
+            feat_names_out
+            if len(feat_names_out) == len(normalized_imp)
+            else [f"Feature_{i}" for i in range(len(normalized_imp))]
+        )
+        return sorted(
+            zip(f_names, np.round(normalized_imp, 2)),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:10]
+
     comparison_matrix = []
     detailed_metrics = {}
 
@@ -1664,42 +1559,15 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
             "test_roc_auc": round(test_auc, 4),
             "roc_curve": roc_data,
             "confusion_matrix": cm,
+            "top_features": extract_top_features(m_model),
         }
 
-    # Best model feature importance extraction
     best_model_name = max(comparison_matrix, key=lambda x: x["Test ROC-AUC"])["Model"]
-    best_model_obj = predictor._models[best_model_name]
-    feat_names_out = []
-    for name, trans, cols in predictor._preprocessor.transformers_:
-        if name == "numerical":
-            feat_names_out.extend(cols)
-        elif name == "categorical":
-            if hasattr(trans, "get_feature_names_out"):
-                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
-            elif hasattr(trans, "categories_"):
-                for i, col in enumerate(cols):
-                    for cat in trans.categories_[i]:
-                        feat_names_out.append(f"{col}_{cat}")
-
-    top_features = []
-    if hasattr(best_model_obj, "feature_importances_"):
-        raw_imp = best_model_obj.feature_importances_
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
-    elif hasattr(best_model_obj, "coef_"):
-        raw_imp = np.abs(best_model_obj.coef_[0])
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
 
     return {
         "comparison_matrix": comparison_matrix,
         "detailed_metrics": detailed_metrics,
         "best_model_name": best_model_name,
-        "top_features": top_features,
     }
 
 
@@ -1737,7 +1605,15 @@ with bench_expander:
         comparison_matrix = bench_data["comparison_matrix"]
         detailed_metrics = bench_data["detailed_metrics"]
         best_model_name = bench_data["best_model_name"]
-        top_features = bench_data.get("top_features", [])
+
+        # The single-model panels below follow the sidebar selection, not the
+        # best scorer: picking Random Forest previously still rendered the
+        # Logistic Regression breakdown whenever LR won on test ROC-AUC.
+        display_model_name = st.session_state.get("active_model", best_model_name)
+        if display_model_name not in detailed_metrics:
+            display_model_name = best_model_name
+        display_metrics = detailed_metrics[display_model_name]
+        top_features = display_metrics.get("top_features", [])
 
         model_colors = {
             "Logistic Regression": "#94A3B8",
@@ -1803,11 +1679,11 @@ with bench_expander:
 
         with col_cm, st.container(border=True):
             st.markdown(
-                f"#### :material/grid_on: Confusion matrix ({best_model_name})"
+                f"#### :material/grid_on: Confusion matrix ({display_model_name})"
             )
-            best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
+            active_cm = display_metrics["confusion_matrix"]
             fig_cm = px.imshow(
-                best_cm,
+                active_cm,
                 text_auto=True,
                 labels={"x": "Predicted class", "y": "Actual class", "color": "Count"},
                 x=["Not placed (0)", "Placed (1)"],
@@ -1820,7 +1696,7 @@ with bench_expander:
         # Feature importance
         if top_features:
             with st.container(border=True):
-                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({best_model_name})")
+                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({display_model_name})")
                 f_df = pd.DataFrame(top_features, columns=["Feature", "Importance (%)"]).sort_values(by="Importance (%)", ascending=True)
 
                 fig_feat = px.bar(

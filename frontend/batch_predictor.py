@@ -16,6 +16,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import json
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -158,7 +159,7 @@ class BatchPredictor:
         return self._models.get(self._active_model_name)
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = engineer_features(df, stats=self._stats)  # adds the 18 derived columns first
+        df = engineer_features(df, stats=self._stats)  # adds the 21 derived columns first
         result = pd.DataFrame(index=df.index)
         for col in RAW_NUMERICAL_FEATURES + [c for c in NUMERICAL_FEATURES if c not in RAW_NUMERICAL_FEATURES]:
             result[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0) if col in df.columns else 0.0
