@@ -8,20 +8,18 @@ Premium Streamlit dashboard with 3 tabs:
 
 Plus: Multi-Model Benchmark Comparison expander
 
-Ported from prediction.txt design system. Preserves resume upload
-functionality from original dashboard.
+Ported from prediction.txt design system.
 
 Usage:
     cd frontend
     streamlit run app.py
 
 Prerequisites:
-    - Model artifacts in part2/models/ and part3/models/
+    - Model artifacts in artifacts/production/ (or part2/models/ and
+      part3/models/ as a local-dev fallback)
     - Dataset at data/raw/student_placement.csv
 """
 
-import io
-import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -45,23 +43,14 @@ from batch_predictor import (
 )
 from simulator import INTERVENTION_KNOBS, CohortWhatIfSimulator
 
+import shap_explainer
+
 from feature_engineering import (
-    COLUMN_RENAME_MAP,
     FEATURE_RANGES,
-    RAW_CATEGORICAL_FEATURES,
-    RAW_NUMERICAL_FEATURES,
     TARGET_COLUMN,
     TARGET_MAP,
     normalize_columns,
 )
-
-# Try importing pdfplumber for resume parsing (optional)
-try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
-except ImportError:
-    HAS_PDFPLUMBER = False
-
 
 # =============================================================================
 # 1. PAGE SETUP & THEME STYLING
@@ -124,110 +113,7 @@ RISK_COLORS = {
 
 
 # =============================================================================
-# 2. RESUME PARSING (preserved from original dashboard)
-# =============================================================================
-
-def extract_resume_data(pdf_bytes: bytes) -> dict:
-    """
-    Extract structured student data from a resume PDF using regex
-    heuristics. Returns a dict with keys matching sidebar widget keys;
-    values are None when the pattern is not found.
-    """
-    if not HAS_PDFPLUMBER:
-        return {}
-
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-
-    # Keys match the raw feature names, so callers can write them straight
-    # into st.session_state["diag_<key>"] to prefill the Tab 2 inputs.
-    result = {
-        "name": None,
-        "cgpa": None,
-        "ssc_marks": None,
-        "hsc_marks": None,
-        "workshops_certifications": None,
-        "internships": None,
-        "projects": None,
-    }
-
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-
-    # -- Name: first plausible line in the header --
-    skip_keywords = [
-        "@", "phone", "email", "address", "linkedin", "section",
-        "objective", "summary", "education", "experience", "skills",
-        "certification", "project", "contact", "profile",
-    ]
-    for line in lines[:6]:
-        if any(kw in line.lower() for kw in skip_keywords):
-            continue
-        cleaned = re.sub(
-            r"^(name|candidate|mr\.|ms\.|miss|shri)\s*[:\-]?\s*",
-            "", line, flags=re.IGNORECASE,
-        )
-        if cleaned and len(cleaned.split()) >= 2:
-            result["name"] = cleaned.strip().title()
-            break
-
-    # -- CGPA --
-    m = re.search(r"(?:cgpa|gpa)[:\s]*(\d+\.?\d*)", text, re.IGNORECASE)
-    if m:
-        result["cgpa"] = min(float(m.group(1)), 10.0)
-
-    # -- SSC (10th) percentage --
-    m = re.search(
-        r"(?:10th|tenth|ssc|class\s*x)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["ssc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- HSC (12th) percentage --
-    m = re.search(
-        r"(?:12th|twelfth|hsc|class\s*xii|xii)[:\s]*(\d+\.?\d*)\s*%?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        result["hsc_marks"] = min(float(m.group(1)), 100.0)
-
-    # -- Certifications / workshops count --
-    cert_match = re.search(
-        r"(?:certification|certificate|workshops?|courses?)[\\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if cert_match:
-        result["workshops_certifications"] = len(
-            re.findall(r"[-•*]\s*.+", cert_match.group(1))
-        )
-
-    # -- Internship count --
-    exp_match = re.search(
-        r"(?:experience|internship|work\s*history)[\s:]*\n"
-        r"((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if exp_match:
-        result["internships"] = len(
-            re.findall(r"[-•*]\s*.+", exp_match.group(1))
-        )
-
-    # -- Projects --
-    proj_match = re.search(
-        r"(?:projects?|portfolio)[\s:]*\n((?:[-•*]\s*.+\n?)+)",
-        text, re.IGNORECASE,
-    )
-    if proj_match:
-        result["projects"] = len(
-            re.findall(r"[-•*]\s*.+", proj_match.group(1))
-        )
-
-    return result
-
-
-# =============================================================================
-# 3. SYSTEM BOOTSTRAP & CACHING
+# 2. SYSTEM BOOTSTRAP & CACHING
 # =============================================================================
 
 @st.cache_resource(show_spinner="Loading ML Models & Dataset...")
@@ -235,13 +121,13 @@ def load_system():
     """Load dataset, preprocessor, and all model artifacts once."""
     predictor = BatchPredictor()
     predictor.load()
-    raw_df = predictor.load_dataset()
+    default_df = predictor.load_dataset()
     simulator = CohortWhatIfSimulator(predictor)
-    return predictor, raw_df, simulator
+    return predictor, default_df, simulator
 
 
 try:
-    predictor, raw_df, simulator = load_system()
+    predictor, default_raw_df, simulator = load_system()
     system_loaded = True
 except Exception as load_err:
     system_loaded = False
@@ -253,17 +139,97 @@ except Exception as load_err:
     st.stop()
 
 
+@st.cache_resource(show_spinner="Preparing SHAP explainers...")
+def build_shap_explainers() -> dict:
+    """
+    One exact SHAP explainer per loaded model, built on a fixed background
+    sample of the default dataset. Cached per process; the explainers are
+    read-only once built.
+    """
+    background_df = default_raw_df.sample(n=100, random_state=42)
+    bg_matrix, _ = predictor.prepare_model_matrix(background_df)
+    explainers = {}
+    for m_name in predictor.available_models:
+        model = predictor._models[m_name]
+        explainers[m_name] = shap_explainer.build_explainer(
+            model, background=bg_matrix.to_numpy()
+        )
+    return explainers
+
+
+@st.cache_data(show_spinner="Computing SHAP attribution...")
+def compute_local_shap(model_name: str, student_dict_key: str) -> dict:
+    """
+    Local SHAP explanation for one candidate profile. ``student_dict_key`` is
+    a stable string serialization of the profile so widget changes re-key the
+    cache. Explainers come from the cached per-process ``build_shap_explainers``.
+    """
+    import json
+
+    student_dict = json.loads(student_dict_key)
+    explainer = build_shap_explainers()[model_name]
+    df = pd.DataFrame([student_dict])
+    transformed, engineered = predictor.prepare_model_matrix(df)
+
+    shap_output = explainer.shap_values(transformed.to_numpy())
+    shap_row = shap_explainer.extract_shap_values(shap_output)[0]
+    base_value = shap_explainer.extract_base_value(explainer.expected_value)
+    display_values = shap_explainer.make_display_values(
+        engineered, list(transformed.columns)
+    ).iloc[0]
+
+    return {
+        "shap_values": shap_row,
+        "base_value": base_value,
+        "feature_names": list(transformed.columns),
+        "display_values": display_values.tolist(),
+    }
+
+
 # =============================================================================
-# 4. SIDEBAR CONTROLS
+# 3. SIDEBAR CONTROLS
 # =============================================================================
 with st.sidebar:
     st.markdown("### :material/school: CampusReady")
     st.caption("Student placement readiness & policy simulator")
     st.space("small")
 
-    # Dataset info
-    st.subheader(":material/dataset: Dataset")
-    st.caption(f"**{len(raw_df):,}** students • **{len(raw_df.columns)}** features")
+    # Dataset Source & Upload
+    st.subheader(":material/dataset: Student dataset")
+    uploaded_file = st.file_uploader(
+        "Upload student cohort CSV",
+        type=["csv"],
+        help="Upload a CSV with the same structure as the training dataset.",
+    )
+
+    if uploaded_file is not None:
+        try:
+            user_df = pd.read_csv(uploaded_file)
+            user_df.columns = [str(c).strip() for c in user_df.columns]
+            user_df = normalize_columns(user_df)
+            if "student_id" not in user_df.columns:
+                user_df.insert(0, "student_id", range(1, len(user_df) + 1))
+            raw_df = user_df
+            st.success(
+                f"**Uploaded cohort:** {len(raw_df):,} students • {len(raw_df.columns)} features",
+                icon=":material/check_circle:",
+            )
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
+            raw_df = default_raw_df
+    else:
+        raw_df = default_raw_df
+        st.caption(f"**Default dataset:** {len(raw_df):,} students • {len(raw_df.columns)} features")
+
+    # Sample template download
+    sample_csv = default_raw_df.head(20).to_csv(index=False).encode("utf-8")
+    st.download_button(
+        ":material/download: Download sample CSV",
+        data=sample_csv,
+        file_name="sample_student_placement.csv",
+        mime="text/csv",
+        help="Download a 20-row sample CSV matching the expected schema.",
+    )
 
     # Model selector — stored per-session, never mutates the cached singleton
     st.space("small")
@@ -288,16 +254,26 @@ with st.sidebar:
 
     # This dataset carries no demographic or department columns, so cohorts
     # are segmented on the two institutional-support flags it does provide.
+    training_options = (
+        ["ALL"] + sorted(raw_df["placement_training"].dropna().astype(str).unique().tolist())
+        if "placement_training" in raw_df.columns
+        else ["ALL"]
+    )
     selected_training = st.pills(
         "Placement training",
-        ["ALL"] + sorted(raw_df["placement_training"].dropna().unique().tolist()),
+        training_options,
         default="ALL",
         key="filter_training",
     )
 
+    extra_options = (
+        ["ALL"] + sorted(raw_df["extracurricular_activities"].dropna().astype(str).unique().tolist())
+        if "extracurricular_activities" in raw_df.columns
+        else ["ALL"]
+    )
     selected_extra = st.pills(
         "Extracurricular activities",
-        ["ALL"] + sorted(raw_df["extracurricular_activities"].dropna().unique().tolist()),
+        extra_options,
         default="ALL",
         key="filter_extra",
     )
@@ -310,13 +286,13 @@ with st.sidebar:
 
     # Apply filters
     filtered_df = raw_df.copy()
-    if selected_training and selected_training != "ALL":
+    if selected_training and selected_training != "ALL" and "placement_training" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["placement_training"] == selected_training]
-    if selected_extra and selected_extra != "ALL":
+    if selected_extra and selected_extra != "ALL" and "extracurricular_activities" in filtered_df.columns:
         filtered_df = filtered_df[
             filtered_df["extracurricular_activities"] == selected_extra
         ]
-    if selected_band and selected_band != "ALL":
+    if selected_band and selected_band != "ALL" and "cgpa" in filtered_df.columns:
         if selected_band == "< 7.0":
             filtered_df = filtered_df[filtered_df["cgpa"] < 7.0]
         elif selected_band == "7.0 – 8.0":
@@ -329,37 +305,9 @@ with st.sidebar:
     cohort_ratio = f"{len(filtered_df):,} / {len(raw_df):,}"
     st.caption(f":material/groups: Active cohort: **{cohort_ratio}** students")
 
-    # Resume upload
-    st.space("small")
-    st.subheader(":material/upload_file: Resume upload")
-    if HAS_PDFPLUMBER:
-        resume_file = st.file_uploader(
-            "Upload resume (PDF)",
-            type=["pdf"],
-            help="Upload a student resume to auto-fill Tab 2 fields.",
-        )
-        if (
-            resume_file is not None
-            and st.session_state.get("_last_resume_file") != resume_file.name
-        ):
-            parsed = extract_resume_data(resume_file.getvalue())
-            st.session_state["_parsed"] = parsed
-            st.session_state["_last_resume_file"] = resume_file.name
-            for key, val in parsed.items():
-                if val is not None and key != "name":
-                    st.session_state[f"diag_{key}"] = val
-            if parsed.get("name"):
-                st.success(
-                    f"Parsed resume for **{parsed['name']}**",
-                    icon=":material/check_circle:",
-                )
-    else:
-        st.caption(":material/info: Install `pdfplumber` for resume auto-fill support.")
-        resume_file = None
-
 
 # =============================================================================
-# 5. BATCH PREDICTIONS ON FILTERED COHORT
+# 4. BATCH PREDICTIONS ON FILTERED COHORT
 # =============================================================================
 if not filtered_df.empty:
     try:
@@ -392,7 +340,7 @@ if not filtered_df.empty:
 
 
 # =============================================================================
-# 6. DASHBOARD HEADER
+# 5. DASHBOARD HEADER
 # =============================================================================
 st.badge(
     "Student Placement Prediction System",
@@ -405,12 +353,11 @@ st.caption(
     f"Driven by **{selected_model_name}**"
 )
 
-# 4 Primary Tabs — Material icons, sentence casing (per design.md)
-tab1, tab2, tab3, tab4 = st.tabs([
+# 3 Primary Tabs — Material icons, sentence casing (per design.md)
+tab1, tab2, tab3 = st.tabs([
     ":material/bar_chart: Departmental pulse & readiness",
     ":material/person_search: Per-student diagnostic & skill-gaps",
     ":material/tune: Cohort what-if policy simulator",
-    ":material/analytics: Upload & analyze cohort",
 ])
 
 
@@ -711,7 +658,7 @@ with tab2:
                 student_data["cgpa"] = st.slider(
                     "Current CGPA",
                     6.5, 9.1,
-                    value=float(st.session_state.get("diag_cgpa", 7.7)),
+                    value=7.7,
                     step=0.1,
                     key="diag_cgpa_slider",
                 )
@@ -719,7 +666,7 @@ with tab2:
                 student_data["ssc_marks"] = st.slider(
                     "SSC / Class 10 %",
                     55.0, 90.0,
-                    value=float(st.session_state.get("diag_ssc_marks", 70.0)),
+                    value=70.0,
                     step=1.0,
                     key="diag_ssc_slider",
                 )
@@ -727,7 +674,7 @@ with tab2:
                 student_data["hsc_marks"] = st.slider(
                     "HSC / Class 12 %",
                     57.0, 88.0,
-                    value=float(st.session_state.get("diag_hsc_marks", 74.0)),
+                    value=74.0,
                     step=1.0,
                     key="diag_hsc_slider",
                 )
@@ -750,19 +697,19 @@ with tab2:
             with ex1:
                 student_data["internships"] = st.number_input(
                     "Internships", 0, 2,
-                    value=int(st.session_state.get("diag_internships", 1)),
+                    value=1,
                     key="diag_intern_input"
                 )
             with ex2:
                 student_data["projects"] = st.number_input(
                     "Projects", 0, 3,
-                    value=int(st.session_state.get("diag_projects", 2)),
+                    value=2,
                     key="diag_proj_input"
                 )
             with ex3:
                 student_data["workshops_certifications"] = st.number_input(
                     "Workshops / certifications", 0, 3,
-                    value=int(st.session_state.get("diag_workshops_certifications", 1)),
+                    value=1,
                     key="diag_certs_input"
                 )
 
@@ -874,19 +821,20 @@ with tab2:
             {"column": "workshops_certifications", "label": "Certs (×33)", "scale_factor": 33.3},
         ]
 
-        # Compute placed peers benchmark. raw_df keeps the original text
-        # target ("Placed"/"NotPlaced"), so compare against the label.
+        # Compute placed peers benchmark. If raw_df has ground-truth PlacementStatus,
+        # use placed students from it; otherwise fall back to default training dataset placed peers.
         target_col = TARGET_COLUMN
         placed_mask = (
             raw_df[target_col].astype(str) == "Placed"
             if target_col in raw_df.columns
             else None
         )
-        placed_peers = (
-            raw_df[placed_mask]
-            if placed_mask is not None and placed_mask.any()
-            else raw_df
-        )
+        if placed_mask is not None and placed_mask.any():
+            placed_peers = raw_df[placed_mask]
+        elif target_col in default_raw_df.columns:
+            placed_peers = default_raw_df[default_raw_df[target_col].astype(str) == "Placed"]
+        else:
+            placed_peers = raw_df
 
         radar_categories = []
         cand_radar_vals = []
@@ -1116,6 +1064,57 @@ with tab2:
                 with r_right:
                     st.metric("Uplift", rem["uplift"])
 
+    # SHAP local explanation — why did this model predict what it predicted?
+    st.space("small")
+    st.markdown("### :material/insights: SHAP local explanation")
+    st.caption(
+        "Game-theoretic attribution of each feature's contribution to this "
+        "candidate's predicted placement probability, for the active model."
+    )
+
+    run_shap_local = st.checkbox(
+        "Run SHAP explanation for this candidate",
+        key="run_shap_local",
+        help="Computes exact SHAP contributions for the selected candidate "
+        "using the active model. Heavy for the first run, cached afterwards.",
+    )
+
+    if run_shap_local:
+        active_model = st.session_state.get("active_model")
+        if active_model not in predictor.available_models:
+            st.warning(
+                f":material/warning: Model `{active_model}` is not loaded. "
+                "Pick one from the sidebar."
+            )
+        else:
+            try:
+                import json
+
+                student_key = json.dumps(
+                    {k: v for k, v in student_data.items()}, sort_keys=True
+                )
+                local_shap = compute_local_shap(active_model, student_key)
+            except Exception as shap_err:
+                st.warning(
+                    f":material/warning: Could not compute SHAP explanation: {shap_err}"
+                )
+            else:
+                with st.container(border=True):
+                    fig_waterfall = shap_explainer.waterfall_figure(
+                        shap_values_row=np.asarray(local_shap["shap_values"]),
+                        base_value=local_shap["base_value"],
+                        feature_names=local_shap["feature_names"],
+                        display_values=local_shap["display_values"],
+                        title=f"SHAP waterfall — why {active_model} predicts {candidate_prob_pct}%",
+                    )
+                    st.plotly_chart(fig_waterfall, use_container_width=True)
+                    st.caption(
+                        "Red bars push toward **placed**, blue bars push toward "
+                        "**not placed**. The dotted line is the model output "
+                        "f(x) on the log-odds scale; positive log-odds (>0) "
+                        "mean a placement probability above 50%."
+                    )
+
 
 # =============================================================================
 # TAB 3: COHORT WHAT-IF POLICY SIMULATOR
@@ -1301,257 +1300,6 @@ with tab3:
             )
 
 
-# =============================================================================
-# TAB 4: UPLOAD & ANALYZE COHORT
-# =============================================================================
-with tab4:
-    st.markdown("### :material/analytics: Custom cohort upload & analytics")
-    st.caption("Upload a CSV file containing student placement details to evaluate readiness, map risk tiers, and generate custom cohort data analytics.")
-
-    # Template download or example expander
-    with st.expander(":material/info: View expected CSV schema & sample template"):
-        st.markdown("""
-        The uploaded CSV should contain columns matching the dataset schema. Headers can be in either **raw mixed-case** format or **snake_case**.
-
-        **Required Columns:**
-        - **CGPA**: Student's Cumulative Grade Point Average (typically 6.5 to 9.5)
-        - **Internships**: Number of internships completed (e.g. 0, 1, 2)
-        - **Projects**: Number of projects completed (e.g. 0, 1, 2, 3)
-        - **Workshops/Certifications**: Number of workshops/certifications (e.g. 0, 1, 2, 3)
-        - **AptitudeTestScore**: Score in mock aptitude test (typically 60 to 90)
-        - **SoftSkillsRating**: Soft skills rating (typically 3.0 to 5.0)
-        - **ExtracurricularActivities**: "Yes" or "No"
-        - **PlacementTraining**: "Yes" or "No"
-        - **SSC_Marks**: 10th grade marks percentage (typically 55.0 to 90.0)
-        - **HSC_Marks**: 12th grade marks percentage (typically 57.0 to 88.0)
-
-        **Optional Columns:**
-        - **StudentID**: Unique identifier
-        - **PlacementStatus**: "Placed" or "NotPlaced" (used to compare against actual placement outcomes if available)
-        """)
-
-        # Create a download button for a sample template!
-        sample_template = pd.DataFrame([{
-            "StudentID": 10001,
-            "CGPA": 8.2,
-            "Internships": 1,
-            "Projects": 2,
-            "Workshops/Certifications": 1,
-            "AptitudeTestScore": 78,
-            "SoftSkillsRating": 4.2,
-            "ExtracurricularActivities": "Yes",
-            "PlacementTraining": "No",
-            "SSC_Marks": 82.5,
-            "HSC_Marks": 79.0,
-            "PlacementStatus": "Placed"
-        }])
-
-        template_csv = sample_template.to_csv(index=False)
-        st.download_button(
-            label="Download sample CSV template",
-            data=template_csv,
-            file_name="student_placement_template.csv",
-            mime="text/csv",
-            icon=":material/download:",
-        )
-
-    uploaded_file = st.file_uploader("Upload student placement details (CSV)", type=["csv"], key="cohort_csv_uploader")
-
-    if uploaded_file is not None:
-        try:
-            custom_df = pd.read_csv(uploaded_file)
-            st.success(f"Successfully loaded file: **{uploaded_file.name}** ({len(custom_df)} rows)", icon=":material/check_circle:")
-
-            # Normalize column headers
-            norm_custom_df = normalize_columns(custom_df)
-
-            # Validate required columns
-            required_cols = RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES
-            missing_cols = [col for col in required_cols if col not in norm_custom_df.columns]
-
-            if missing_cols:
-                # Map snake_case back to user-friendly raw names to show in the error
-                raw_mapping = {v: k for k, v in COLUMN_RENAME_MAP.items()}
-                friendly_missing = [raw_mapping.get(c, c) for c in missing_cols]
-                st.error(
-                    f"**Validation Error:** The uploaded CSV is missing the following required columns:\n"
-                    f"{', '.join(f'`{c}`' for c in friendly_missing)}\n\n"
-                    "Please check the sample template above and ensure all required fields are included."
-                )
-            else:
-                # Run predictions on the uploaded data!
-                custom_probs = predictor.predict_probabilities(
-                    norm_custom_df, model_name=st.session_state.get("active_model")
-                )
-
-                # Add predictions to the DataFrame
-                norm_custom_df = norm_custom_df.copy()
-                norm_custom_df["placement_prob"] = np.round(custom_probs * 100, 1)
-                norm_custom_df["predicted_status"] = np.where(
-                    custom_probs >= 0.50, "Placed", "Not Placed"
-                )
-                norm_custom_df["risk_tier"] = [
-                    predictor.classify_risk(p) for p in custom_probs
-                ]
-
-                st.markdown("---")
-                st.markdown("### :material/analytics: Uploaded Cohort Data Analytics")
-
-                # Row 1: Key Performance Indicators
-                with st.container(border=True):
-                    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-                    tot = len(norm_custom_df)
-                    p_cnt = int((norm_custom_df["predicted_status"] == "Placed").sum())
-                    p_rate = round((p_cnt / tot) * 100, 1) if tot > 0 else 0.0
-                    avg_prob = round(float(norm_custom_df["placement_prob"].mean()), 1)
-                    high_risk_cnt = int((norm_custom_df["placement_prob"] < 50.0).sum())
-
-                    with kpi1:
-                        st.metric("Uploaded students", f"{tot:,}")
-                    with kpi2:
-                        st.metric("Projected placement rate", f"{p_rate}%", f"{p_cnt} placed")
-                    with kpi3:
-                        st.metric("Average placement likelihood", f"{avg_prob}%")
-                    with kpi4:
-                        st.metric("At-risk students (<50%)", f"{high_risk_cnt}", f"{round((high_risk_cnt / max(1, tot)) * 100, 1)}% of cohort", delta_color="inverse")
-
-                # Row 2: Charts
-                c1, c2 = st.columns(2)
-                with c1, st.container(border=True):
-                    st.markdown("#### :material/pie_chart: Risk tier distribution")
-                    rt_dist = norm_custom_df["risk_tier"].value_counts().reset_index()
-                    rt_dist.columns = ["Risk Tier", "Count"]
-                    fig_pie_custom = px.pie(
-                        rt_dist,
-                        names="Risk Tier",
-                        values="Count",
-                        color="Risk Tier",
-                        color_discrete_map=RISK_COLORS,
-                        hole=0.5,
-                    )
-                    fig_pie_custom.update_layout(get_plotly_layout(height=260))
-                    st.plotly_chart(fig_pie_custom, use_container_width=True)
-
-                with c2, st.container(border=True):
-                    st.markdown("#### :material/bubble_chart: Academic score vs. predicted probability")
-                    if "academic_score" not in norm_custom_df.columns:
-                        norm_custom_df["academic_score"] = (norm_custom_df["ssc_marks"] + norm_custom_df["hsc_marks"]) / 2
-                    fig_scatter = px.scatter(
-                        norm_custom_df,
-                        x="cgpa",
-                        y="placement_prob",
-                        color="risk_tier",
-                        color_discrete_map=RISK_COLORS,
-                        hover_data=["cgpa", "academic_score", "internships", "projects"],
-                        labels={"cgpa": "CGPA", "placement_prob": "Placement Probability (%)"},
-                    )
-                    fig_scatter.update_layout(get_plotly_layout(height=260))
-                    st.plotly_chart(fig_scatter, use_container_width=True)
-
-                # Row 3: Placement Training Impact & Internship/Project Distribution
-                c3, c4 = st.columns(2)
-                with c3, st.container(border=True):
-                    st.markdown("#### :material/query_stats: Placement training impact")
-                    training_stats = (
-                        norm_custom_df.groupby("placement_training", observed=True)["placement_prob"]
-                        .mean()
-                        .reset_index()
-                    )
-                    fig_train = px.bar(
-                        training_stats,
-                        x="placement_training",
-                        y="placement_prob",
-                        color="placement_training",
-                        color_discrete_sequence=["#3B82F6", "#60A5FA"],
-                        labels={"placement_training": "Placement Training", "placement_prob": "Avg Probability (%)"},
-                        text_auto=".1f",
-                    )
-                    fig_train.update_layout(get_plotly_layout(height=260))
-                    fig_train.update_layout(showlegend=False)
-                    st.plotly_chart(fig_train, use_container_width=True)
-
-                with c4, st.container(border=True):
-                    st.markdown("#### :material/construction: Portfolio strength (Projects & Internships)")
-                    portfolio_stats = (
-                        norm_custom_df.groupby(["internships", "projects"], observed=True)["placement_prob"]
-                        .mean()
-                        .reset_index()
-                    )
-                    portfolio_stats["combination"] = (
-                        "Int: " + portfolio_stats["internships"].astype(str) + " / Proj: " + portfolio_stats["projects"].astype(str)
-                    )
-                    fig_port = px.bar(
-                        portfolio_stats.sort_values(by="placement_prob", ascending=False).head(10),
-                        x="placement_prob",
-                        y="combination",
-                        orientation="h",
-                        color="placement_prob",
-                        color_continuous_scale="Blues",
-                        labels={"combination": "Internships / Projects", "placement_prob": "Avg Probability (%)"},
-                    )
-                    fig_port.update_layout(get_plotly_layout(height=260))
-                    st.plotly_chart(fig_port, use_container_width=True)
-
-                # actual vs predicted if actual column is present
-                if "placement_status" in norm_custom_df.columns:
-                    norm_custom_df["actual_numeric"] = norm_custom_df["placement_status"].map(TARGET_MAP).fillna(-1)
-                    if (norm_custom_df["actual_numeric"] != -1).any():
-                        with st.container(border=True):
-                            st.markdown("#### :material/checklist: Actual vs. Predicted Placement Outcomes")
-                            c_act1, c_act2 = st.columns(2)
-                            with c_act1:
-                                actual_placed = (norm_custom_df["actual_numeric"] == 1).sum()
-                                actual_rate = round((actual_placed / tot) * 100, 1) if tot > 0 else 0.0
-                                st.metric("Actual Placement Rate", f"{actual_rate}%", f"{actual_placed} placed")
-                            with c_act2:
-                                correct_preds = ((norm_custom_df["predicted_status"] == "Placed") == (norm_custom_df["actual_numeric"] == 1)).sum()
-                                match_pct = round((correct_preds / tot) * 100, 1) if tot > 0 else 0.0
-                                st.metric("Prediction Accuracy", f"{match_pct}%", f"{correct_preds} matches")
-
-                # Row 4: Data table
-                with st.container(border=True):
-                    st.markdown("#### :material/table_rows: Uploaded student diagnostic list")
-                    display_df = norm_custom_df.copy()
-                    col_config = {
-                        "placement_prob": st.column_config.ProgressColumn(
-                            "Placement Likelihood",
-                            format="%.1f%%",
-                            min_value=0,
-                            max_value=100,
-                        ),
-                        "predicted_status": st.column_config.SelectboxColumn(
-                            "Projected Outcome",
-                            options=["Placed", "Not Placed"]
-                        ),
-                        "risk_tier": "Risk Tier"
-                    }
-                    if "student_id" not in display_df.columns:
-                        display_df["student_id"] = [f"STU-{10000 + i}" for i in range(len(display_df))]
-
-                    cols_to_show = ["student_id", "cgpa", "internships", "projects", "aptitude_test_score", "soft_skills_rating", "placement_prob", "predicted_status", "risk_tier"]
-                    if "placement_status" in display_df.columns:
-                        cols_to_show.insert(6, "placement_status")
-
-                    st.dataframe(
-                        display_df[cols_to_show],
-                        column_config=col_config,
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-
-                    prediction_results_csv = display_df.to_csv(index=False)
-                    st.download_button(
-                        label="Export placement predictions to CSV",
-                        data=prediction_results_csv,
-                        file_name=f"predicted_{uploaded_file.name}",
-                        mime="text/csv",
-                        icon=":material/download_2:",
-                    )
-        except Exception as e:
-            st.error(f"Failed to process CSV file: {e}")
-    else:
-        st.info("Upload a CSV file of your student cohort in the field above to view real-time data analytics and projected outcomes.", icon=":material/upload_file:")
-
 
 # =============================================================================
 # MULTI-MODEL BENCHMARK COMPARISON EXPANDER
@@ -1577,24 +1325,24 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 
     bench_df = raw_df.copy()
+    has_labels = False
     if "placement_target" in bench_df.columns:
         y_bench = bench_df["placement_target"]
+        has_labels = len(y_bench.dropna().unique()) > 1
     elif TARGET_COLUMN in bench_df.columns:
         col = bench_df[TARGET_COLUMN]
         # Check for a non-numeric dtype rather than `== object`: pandas may
         # back string columns with pyarrow, which is not object dtype.
-        if pd.api.types.is_numeric_dtype(col):
-            y_bench = col
-        else:
-            y_bench = col.map(TARGET_MAP)
-            if y_bench.isnull().any():
-                raise ValueError(
-                    f"Unmapped {TARGET_COLUMN} values: "
-                    f"{col[y_bench.isnull()].unique().tolist()}"
-                )
-        y_bench = y_bench.astype(int)
-    else:
-        y_bench = pd.Series(0, index=bench_df.index)
+        y_bench = col if pd.api.types.is_numeric_dtype(col) else col.map(TARGET_MAP)
+        has_labels = not y_bench.isnull().any() and len(y_bench.dropna().unique()) > 1
+        if has_labels:
+            y_bench = y_bench.astype(int)
+
+    if not has_labels:
+        # Fall back to default reference dataset for ground-truth benchmark
+        bench_df = default_raw_df.copy()
+        col = bench_df[TARGET_COLUMN]
+        y_bench = col.map(TARGET_MAP).astype(int)
 
     X_train_b, X_test_b, y_train_b, y_test_b = train_test_split(
         bench_df, y_bench, test_size=0.20, random_state=42, stratify=y_bench
@@ -1602,6 +1350,41 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
 
     X_train_proc = predictor._preprocessor.transform(predictor._prepare_features(X_train_b))
     X_test_proc = predictor._preprocessor.transform(predictor._prepare_features(X_test_b))
+
+    # Feature names come from the shared preprocessor, so they are identical
+    # for every model - resolve them once, ahead of the per-model loop.
+    feat_names_out = []
+    for name, trans, cols in predictor._preprocessor.transformers_:
+        if name == "numerical":
+            feat_names_out.extend(cols)
+        elif name == "categorical":
+            if hasattr(trans, "get_feature_names_out"):
+                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
+            elif hasattr(trans, "categories_"):
+                for i, col in enumerate(cols):
+                    for cat in trans.categories_[i]:
+                        feat_names_out.append(f"{col}_{cat}")
+
+    def extract_top_features(model_obj) -> list:
+        """Top-10 global importances (%) for one model, or [] if unsupported."""
+        if hasattr(model_obj, "feature_importances_"):
+            raw_imp = model_obj.feature_importances_
+        elif hasattr(model_obj, "coef_"):
+            raw_imp = np.abs(model_obj.coef_[0])
+        else:
+            return []
+        total = np.sum(raw_imp)
+        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
+        f_names = (
+            feat_names_out
+            if len(feat_names_out) == len(normalized_imp)
+            else [f"Feature_{i}" for i in range(len(normalized_imp))]
+        )
+        return sorted(
+            zip(f_names, np.round(normalized_imp, 2)),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:10]
 
     comparison_matrix = []
     detailed_metrics = {}
@@ -1664,42 +1447,41 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
             "test_roc_auc": round(test_auc, 4),
             "roc_curve": roc_data,
             "confusion_matrix": cm,
+            "top_features": extract_top_features(m_model),
         }
 
-    # Best model feature importance extraction
     best_model_name = max(comparison_matrix, key=lambda x: x["Test ROC-AUC"])["Model"]
-    best_model_obj = predictor._models[best_model_name]
-    feat_names_out = []
-    for name, trans, cols in predictor._preprocessor.transformers_:
-        if name == "numerical":
-            feat_names_out.extend(cols)
-        elif name == "categorical":
-            if hasattr(trans, "get_feature_names_out"):
-                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
-            elif hasattr(trans, "categories_"):
-                for i, col in enumerate(cols):
-                    for cat in trans.categories_[i]:
-                        feat_names_out.append(f"{col}_{cat}")
 
-    top_features = []
-    if hasattr(best_model_obj, "feature_importances_"):
-        raw_imp = best_model_obj.feature_importances_
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
-    elif hasattr(best_model_obj, "coef_"):
-        raw_imp = np.abs(best_model_obj.coef_[0])
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
+    # SHAP global explainability — exact contributions for every model on a
+    # fixed subsample of the held-out test split. Stored per model and
+    # selected at render time, matching the cache-key convention of the rest
+    # of the benchmark suite.
+    shap_global = {}
+    n_shap = min(400, len(X_test_proc))
+    shap_idx = np.random.RandomState(0).choice(len(X_test_proc), size=n_shap, replace=False)
+    X_shap = X_test_proc[shap_idx]
+    X_eng_shap = predictor._prepare_features(X_test_b).iloc[shap_idx]
+    background = X_train_proc[:100]
+
+    for m_name, m_model in predictor._models.items():
+        explainer = shap_explainer.build_explainer(m_model, background=background)
+        shap_values = shap_explainer.extract_shap_values(
+            explainer.shap_values(X_shap)
+        )
+        display_values = shap_explainer.make_display_values(
+            X_eng_shap, feat_names_out
+        ).to_numpy()
+        shap_global[m_name] = {
+            "shap_values": shap_values,
+            "display_values": display_values,
+            "feature_names": feat_names_out,
+        }
 
     return {
         "comparison_matrix": comparison_matrix,
         "detailed_metrics": detailed_metrics,
         "best_model_name": best_model_name,
-        "top_features": top_features,
+        "shap_global": shap_global,
     }
 
 
@@ -1733,11 +1515,25 @@ with bench_expander:
 
     if run_benchmark:
       try:
+        if TARGET_COLUMN not in raw_df.columns or len(raw_df[TARGET_COLUMN].dropna().unique()) <= 1:
+            st.info(
+                "Uploaded cohort has no ground-truth `PlacementStatus` labels. "
+                "Benchmark metrics are evaluated on the reference dataset.",
+                icon=":material/info:",
+            )
         bench_data = compute_benchmark_suite(len(raw_df))
         comparison_matrix = bench_data["comparison_matrix"]
         detailed_metrics = bench_data["detailed_metrics"]
         best_model_name = bench_data["best_model_name"]
-        top_features = bench_data.get("top_features", [])
+
+        # The single-model panels below follow the sidebar selection, not the
+        # best scorer: picking Random Forest previously still rendered the
+        # Logistic Regression breakdown whenever LR won on test ROC-AUC.
+        display_model_name = st.session_state.get("active_model", best_model_name)
+        if display_model_name not in detailed_metrics:
+            display_model_name = best_model_name
+        display_metrics = detailed_metrics[display_model_name]
+        top_features = display_metrics.get("top_features", [])
 
         model_colors = {
             "Logistic Regression": "#94A3B8",
@@ -1803,11 +1599,11 @@ with bench_expander:
 
         with col_cm, st.container(border=True):
             st.markdown(
-                f"#### :material/grid_on: Confusion matrix ({best_model_name})"
+                f"#### :material/grid_on: Confusion matrix ({display_model_name})"
             )
-            best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
+            active_cm = display_metrics["confusion_matrix"]
             fig_cm = px.imshow(
-                best_cm,
+                active_cm,
                 text_auto=True,
                 labels={"x": "Predicted class", "y": "Actual class", "color": "Count"},
                 x=["Not placed (0)", "Placed (1)"],
@@ -1820,7 +1616,7 @@ with bench_expander:
         # Feature importance
         if top_features:
             with st.container(border=True):
-                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({best_model_name})")
+                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({display_model_name})")
                 f_df = pd.DataFrame(top_features, columns=["Feature", "Importance (%)"]).sort_values(by="Importance (%)", ascending=True)
 
                 fig_feat = px.bar(
@@ -1835,6 +1631,47 @@ with bench_expander:
                 layout_feat["showlegend"] = False
                 fig_feat.update_layout(layout_feat)
                 st.plotly_chart(fig_feat, use_container_width=True)
+
+        # SHAP global explainability — exact game-theoretic attribution
+        shap_global = bench_data["shap_global"]
+        with st.container(border=True):
+            st.markdown("#### :material/insights: SHAP global explainability")
+            shap_model = st.selectbox(
+                "Explainability model",
+                options=list(shap_global.keys()),
+                index=(
+                    list(shap_global.keys()).index(display_model_name)
+                    if display_model_name in shap_global
+                    else 0
+                ),
+                key="shap_global_model",
+                help="SHAP attribution follows this model (defaults to the "
+                "sidebar's active model).",
+            )
+            shap_data = shap_global[shap_model]
+
+            col_bee, col_bar = st.columns([3, 2])
+            with col_bee, st.container(border=True):
+                fig_bee = shap_explainer.beeswarm_figure(
+                    shap_values=shap_data["shap_values"],
+                    feature_names=shap_data["feature_names"],
+                    display_values=shap_data["display_values"],
+                    title=f"SHAP beeswarm — {shap_model}",
+                )
+                st.plotly_chart(fig_bee, use_container_width=True)
+                st.caption(
+                    "Each dot is one student from the held-out sample. "
+                    "**Red = high feature value**, **blue = low**. Right of "
+                    "zero pushes toward placement; left pushes away."
+                )
+
+            with col_bar, st.container(border=True):
+                fig_shap_bar = shap_explainer.mean_shap_bar_figure(
+                    shap_values=shap_data["shap_values"],
+                    feature_names=shap_data["feature_names"],
+                    title=f"SHAP mean |impact| — {shap_model}",
+                )
+                st.plotly_chart(fig_shap_bar, use_container_width=True)
 
       except Exception as bench_err:
         st.warning(

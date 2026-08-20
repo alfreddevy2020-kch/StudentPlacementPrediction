@@ -10,6 +10,7 @@ Produces:
 
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -22,6 +23,16 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 
 TRAIN_PATH = "data/processed/train_processed.csv"
 TEST_PATH = "data/processed/test_processed.csv"
+
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (Python puts the script's own directory on sys.path, not the
+# repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import TARGET_COLUMN
+
 WEIGHTS_PATH = "data/processed/class_weights.csv"
 
 print("\n[1] Loading preprocessed data ...")
@@ -33,7 +44,8 @@ print("=" * 60)
 print(f"Training Models on {len(train_df):,} Samples x {train_df.shape[1] - 1} Features")
 print("=" * 60)
 
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 X_train = train_df.drop(columns=[TARGET]).values
 y_train = train_df[TARGET].values
 X_test = test_df.drop(columns=[TARGET]).values

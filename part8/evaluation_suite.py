@@ -25,7 +25,9 @@ Run from the repo root, after part2 and part3 pipelines have both run:
 """
 
 import os
+import sys
 import warnings
+from pathlib import Path
 
 import joblib
 import matplotlib
@@ -47,10 +49,21 @@ from sklearn.metrics import (
 
 warnings.filterwarnings("ignore")
 
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (python part{N}/...py puts the script's own directory on
+# sys.path, not the repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import CLASS_LABELS, TARGET_COLUMN
+
 # ---------------------------------------------------------------------------
 # CONFIG — matches the actual repo layout
 # ---------------------------------------------------------------------------
-TARGET_COL = "placement_status"  # 1 = Placed, 0 = Not Placed
+# preprocessing.py writes the encoded target under this name; take it from
+# feature_engineering.py rather than restating the literal here.
+TARGET_COL = TARGET_COLUMN
 TEST_PATH = "data/processed/test_processed.csv"
 TRAIN_PATH = "data/processed/train_processed.csv"  # used only for the leakage sanity check
 
@@ -99,7 +112,7 @@ def evaluate_model(model, X_test, y_test, name):
         "ROC-AUC": roc_auc_score(y_test, y_proba),
     }
     print(f"\n--- {name} ---")
-    print(classification_report(y_test, y_pred, target_names=["At Risk (0)", "Placed (1)"]))
+    print(classification_report(y_test, y_pred, target_names=[f"{lbl} ({i})" for i, lbl in enumerate(CLASS_LABELS)]))
     return metrics, y_proba
 
 
@@ -223,18 +236,27 @@ def leakage_sanity_check(model, name="XGBoost"):
 def edge_case_tests(model, X_test_df, name):
     print(f"\n=== Edge case tests: {name} ===")
 
-    # Columns are one-hot/scaled with prefixes like "numerical__backlogs" —
-    # match by substring so this doesn't break if exact names shift.
-    def find_col(substr):
-        matches = [c for c in X_test_df.columns if substr in c.lower()]
-        return matches[0] if matches else None
-
-    backlog_col = find_col("backlog")
-    attendance_col = find_col("attendance")
+    # These probes used to name specific columns ("backlog", "attendance").
+    # Neither exists in the current schema, so find_col() returned None and
+    # both tests silently degraded: the outlier probe skipped entirely and the
+    # missing-value probe mutated nothing while still printing [PASS].
+    # Pick the columns from the data instead, so the probes follow whatever
+    # preprocessing.py produced. Highest-variance columns carry the most
+    # signal, which makes them the most demanding thing to perturb.
+    probe_cols = (
+        X_test_df.var(numeric_only=True)
+        .sort_values(ascending=False)
+        .head(2)
+        .index.tolist()
+    )
+    if not probe_cols:
+        print("[SKIP] No numeric feature columns to probe")
+        return
+    print(f"  probing columns (highest variance): {probe_cols}")
 
     # 1. Missing values (post-scaling, simulate with the scaled mean = 0)
     X_missing = X_test_df.copy()
-    for col in [c for c in [backlog_col, attendance_col] if c]:
+    for col in probe_cols:
         X_missing.loc[X_missing.sample(frac=0.1, random_state=1).index, col] = 0.0
     try:
         model.predict(X_missing.values)
@@ -242,17 +264,17 @@ def edge_case_tests(model, X_test_df, name):
     except Exception as e:
         print(f"[FAIL] {e}")
 
-    # 2. Outlier profile — extreme backlog value
-    if backlog_col:
-        X_outlier = X_test_df.iloc[[0]].copy()
-        X_outlier[backlog_col] = X_test_df[backlog_col].max() * 3
-        try:
-            pred = model.predict_proba(X_outlier.values)[:, 1][0]
-            print(
-                f"[PASS] Outlier backlog value handled, P(placed)={pred:.3f} — sanity-check manually"
-            )
-        except Exception as e:
-            print(f"[FAIL] {e}")
+    # 2. Outlier profile — push the strongest feature far past its observed max
+    outlier_col = probe_cols[0]
+    X_outlier = X_test_df.iloc[[0]].copy()
+    X_outlier[outlier_col] = X_test_df[outlier_col].max() * 3
+    try:
+        pred = model.predict_proba(X_outlier.values)[:, 1][0]
+        print(
+            f"[PASS] Outlier '{outlier_col}' handled, P(placed)={pred:.3f} — sanity-check manually"
+        )
+    except Exception as e:
+        print(f"[FAIL] {e}")
 
     # 3. Single-row inference — the real dashboard/API use case
     try:

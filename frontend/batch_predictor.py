@@ -15,6 +15,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import json
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -43,6 +45,11 @@ def _resolve(prod_rel: str, dev_rel: str) -> Path:
 PREPROCESSOR_PATH: Path = _resolve(
     "random_forest/preprocessor.joblib",
     "part2/models/preprocessor.joblib",
+)
+
+STATS_PATH: Path = _resolve(
+    "random_forest/normalization_stats.json",
+    "data/processed/normalization_stats.json",
 )
 
 MODEL_PATHS: dict[str, Path] = {
@@ -81,6 +88,7 @@ class BatchPredictor:
 
     def __init__(self) -> None:
         self._preprocessor = None
+        self._stats: dict | None = None
         self._models: dict[str, object] = {}
         self._active_model_name: str = ""
         self._loaded = False
@@ -94,6 +102,12 @@ class BatchPredictor:
             )
 
         self._preprocessor = joblib.load(PREPROCESSOR_PATH)
+
+        if STATS_PATH.exists():
+            with open(STATS_PATH) as f:
+                self._stats = json.load(f)
+        else:
+            self._stats = None
 
         for name, path in MODEL_PATHS.items():
             if path.exists():
@@ -145,7 +159,7 @@ class BatchPredictor:
         return self._models.get(self._active_model_name)
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = engineer_features(df)  # adds the 18 derived columns first
+        df = engineer_features(df, stats=self._stats)  # adds the 21 derived columns first
         result = pd.DataFrame(index=df.index)
         for col in RAW_NUMERICAL_FEATURES + [c for c in NUMERICAL_FEATURES if c not in RAW_NUMERICAL_FEATURES]:
             result[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0) if col in df.columns else 0.0
@@ -182,6 +196,27 @@ class BatchPredictor:
         X_transformed = self._preprocessor.transform(features)
         probs = model.predict_proba(X_transformed)[:, 1]
         return probs
+
+    def prepare_model_matrix(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Build the exact model input matrix for a cohort.
+
+        Returns ``(transformed_df, engineered_df)``:
+        - ``transformed_df`` — the fitted ColumnTransformer output (scaled
+          numericals + one-hot categoricals) with plain feature names, ready
+          for ``predict``/``predict_proba`` and SHAP computations.
+        - ``engineered_df`` — the pre-transform frame (29 numerical + 2
+          categorical columns) used by SHAP charts to display unscaled,
+          human-readable feature values.
+        """
+        engineered = self._prepare_features(df)
+        X = self._preprocessor.transform(engineered)
+        names = [
+            col.replace("numerical__", "").replace("categorical__", "")
+            for col in self._preprocessor.get_feature_names_out()
+        ]
+        transformed = pd.DataFrame(X, columns=names, index=df.index)
+        return transformed, engineered
 
     def predict_single(
         self, student_dict: dict, model_name: str | None = None

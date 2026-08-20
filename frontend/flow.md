@@ -1,137 +1,155 @@
-# Data Flow & Variables
+# Data Flow & Module Reference
 
 ## End-to-End Flow
 
+Inference is in-process. Nothing in this flow crosses a network boundary.
+
 ```
-User uploads resume PDF (optional)
+load_system()  @st.cache_resource                     ── once per process ──
+        │
+        ├─► BatchPredictor.load()   reads preprocessor + 3 models + normalization stats
+        ├─► BatchPredictor.load_dataset()   data/raw/student_placement.csv
+        └─► CohortWhatIfSimulator(predictor)
         │
         ▼
-extract_resume_data() ──► st.session_state ──► auto-fills sidebar widgets
+Sidebar (section 3): active model + cohort filters
+        │
+        ├─► st.session_state["active_model"]  ──► every inference call
+        └─► filtered_df  (placement training / extracurricular / CGPA band)
         │
         ▼
-User adjusts widgets in Streamlit sidebar
+Section 4: predictor.predict_probabilities(filtered_df, model_name=...)
+        │
+        └─► filtered_df gains: placement_prob, predicted_status, risk_tier
         │
         ▼
-render_sidebar() builds `payload` dict + `resume_file`
-        │
-        ├── (with resume) ──► multipart POST: payload_json + resume_text + resume file
-        └── (without) ──────► JSON POST
-        │
-        ▼
-get_prediction() returns `result` dict   ◄── { placement_status, placement_label,
-        │                                      probability_placed, probability_not_placed,
-        │                                      risk_level }
-        │
-        ├─► st.metric               shows probability_placed
-        ├─► build_gauge_chart()      renders Plotly gauge (probability_placed)
-        └─► get_recommendation()     uses risk_level + payload for advice text
+   ┌────┴─────┬──────────────┬──────────────┬─────────────────┐
+  Tab 1      Tab 2          Tab 3          Benchmark expander
+  cohort     per-student    what-if        compute_benchmark_suite()
+  analytics  diagnostic     simulator      @st.cache_data
 ```
 
-Every sidebar interaction triggers a full Streamlit rerun, so the pipeline
-above fires on every slider drag or dropdown change.
+Every widget interaction reruns the whole script, so the pipeline above fires on
+every slider drag or filter change. The two caches are what keep that cheap.
 
-## Resume Parsing
+## Feature Pipeline
 
-`extract_resume_data()` (`app.py:62`) uses regex heuristics on the raw PDF
-text to fill these fields automatically:
+```
+raw CSV  ──normalize_columns()──►  snake_case headers
+         ──engineer_features()──►  8 raw numerical + 21 derived = 29 numerical
+                                   + 2 categorical
+         ──ColumnTransformer────►  model.predict_proba()[:, 1]
+```
 
-| Field               | Heuristic                                                  |
-|---------------------|------------------------------------------------------------|
-| `name`              | First non-empty line in first 6 lines that looks like a person name (≥2 words, not a section header) |
-| `cgpa`              | `CGPA: X.XX` or `GPA: X.XX` pattern                      |
-| `ssc_percentage`    | `10th: XX` / `SSC: XX` / `Class X: XX` pattern            |
-| `hsc_percentage`    | `12th: XX` / `HSC: XX` / `Class XII: XX` pattern          |
-| `degree_percentage` | `Degree: XX` / `B.Tech: XX` pattern                       |
-| `certifications`    | Count of `[-•*]` bullet items under a Certifications heading |
-| `internship_count`  | Count of bullet items under an Experience/Internship heading |
-| `live_projects`     | Count of bullet items under a Projects heading             |
+`engineer_features(df, stats=...)` takes the frozen normalization maxima from
+the production bundle's `normalization_stats.json`, so served features are on
+the same scale the model was trained on.
 
-All other fields (entrance_exam_score, technical_skill_score, soft_skill_score,
-gender, extracurricular_activities, backlogs, attendance_percentage) are NOT
-auto-filled — the user must set them manually.
+| Group       | Columns |
+|-------------|---------|
+| Raw numerical (8) | `cgpa`, `ssc_marks`, `hsc_marks`, `aptitude_test_score`, `soft_skills_rating`, `internships`, `projects`, `workshops_certifications` |
+| Raw categorical (2) | `extracurricular_activities`, `placement_training` |
+| Derived (21) | added by `engineer_features()` — e.g. `skill_composite`, `support_index`, `placement_readiness_score`, `overall_academic_score`, `interview_readiness_score` |
 
-Parsed values are stored in `st.session_state["_parsed"]` and pushed into
-widget keys. User can override any auto-filled value by dragging/changing
-the widget.
+## `BatchPredictor` (`batch_predictor.py`)
 
-## Payload (frontend → backend)
+| Member | Returns | Notes |
+|---|---|---|
+| `load()` | — | Loads preprocessor, stats, and all three models. Raises if none are found. |
+| `available_models` | `list[str]` | `["Random Forest", "Logistic Regression", "XGBoost"]`, subject to what is on disk. |
+| `active_model_name` | `str` | Defaults to Random Forest. The UI does **not** set this; it passes `model_name` per call instead. |
+| `predict_probabilities(df, model_name=None)` | `np.ndarray` `(n,)` in `[0,1]` | Falls back to `active_model_name` when `model_name` is None. |
+| `predict_single(student_dict, model_name=None)` | `float` | Wraps the dict in a one-row frame. |
+| `classify_risk(prob)` | `str` | Static. Risk tier label. |
+| `load_dataset()` | `pd.DataFrame` | Static. Raw dataset with canonical snake_case columns. |
 
-Built by `render_sidebar()`. Keys match the FastAPI `/predict` contract.
+Artifact resolution (`_resolve()`) prefers `artifacts/production/<model>/` and
+falls back to `part2/models/` (Random Forest, Logistic Regression, preprocessor)
+and `part3/models/` (XGBoost).
 
-| Key                          | Type    | Range         | Widget         | Auto-fillable |
-|------------------------------|---------|---------------|----------------|---------------|
-| `ssc_percentage`             | float   | 0.0 – 100.0  | slider         | Yes           |
-| `hsc_percentage`             | float   | 0.0 – 100.0  | slider         | Yes           |
-| `degree_percentage`          | float   | 0.0 – 100.0  | slider         | Yes           |
-| `cgpa`                       | float   | 0.0 – 10.0   | slider         | Yes           |
-| `attendance_percentage`      | float   | 0.0 – 100.0  | slider         | No            |
-| `backlogs`                   | int     | 0 – 20        | number_input   | No            |
-| `entrance_exam_score`        | float   | 0.0 – 100.0  | slider         | No            |
-| `technical_skill_score`      | float   | 0.0 – 100.0  | slider         | No            |
-| `soft_skill_score`           | float   | 0.0 – 100.0  | slider         | No            |
-| `certifications`             | int     | 0 – 20        | number_input   | Yes           |
-| `live_projects`              | int     | 0 – 20        | number_input   | Yes           |
-| `internship_count`           | int     | 0 – 10        | number_input   | Yes           |
-| `work_experience_months`     | int     | 0 – 60        | number_input   | Yes           |
-| `gender`                     | string  | Male/Female/Other | selectbox   | No            |
-| `extracurricular_activities` | string  | "Yes"/"No"    | selectbox      | No            |
+### Risk tiers
 
-###  Backend Call
+| Tier | Probability | Colour |
+|---|---|---|
+| High Risk | `< 0.50` | `#F87171` |
+| Moderate Risk | `0.50 – 0.75` | `#FBBF24` |
+| Interview Ready | `>= 0.75` | `#34D399` |
 
-`POST /predict` with `application/json` body.
+The same 0.50 cut also drives `predicted_status` (`Placed` / `Not Placed`).
 
-## Response (backend → frontend)
+## `CohortWhatIfSimulator` (`simulator.py`)
 
-Expected shape from `POST /predict`:
+`simulate_policy_intervention(cohort_df, interventions)` takes a
+`{column: delta}` mapping, applies the deltas, clamps each column to its
+observed training range from `FEATURE_RANGES`, and re-scores the cohort.
+Clamping is deliberate: pushing a feature past the trained range produces
+confident nonsense, so an intervention can only move students to the top of the
+real range.
 
-```json
+Returns a dict with:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `cohort_size` | int | Rows simulated |
+| `baseline_placement_rate` | float | % placed before intervention |
+| `simulated_placement_rate` | float | % placed after |
+| `placement_uplift_pct` | float | Difference in percentage points |
+| `newly_placed_count` | int | Crossed 0.50 upward |
+| `net_transitioned_out_of_high_risk` | int | Left the `< 0.50` tier |
+| `risk_migration` | dict | `{baseline, simulated}` → tier counts |
+| `student_transitions` | DataFrame | Per-candidate before/after log |
+
+An empty cohort returns the same keys with zeroed values rather than raising.
+
+### Intervention knobs (`INTERVENTION_KNOBS`)
+
+| Column | Label | Max delta | Group |
+|---|---|---|---|
+| `aptitude_test_score` | Aptitude Coaching Programme | +25.0 | academic |
+| `cgpa` | Academic Remediation Drive | +1.5 | academic |
+| `soft_skills_rating` | Communication Workshop | +1.5 | academic |
+| `projects` | Capstone Project Workshop | +3.0 | experiential |
+| `workshops_certifications` | Sponsored Certification Drive | +3.0 | experiential |
+| `internships` | Industry Internship Placement | +2.0 | experiential |
+
+## Benchmark Suite
+
+`compute_benchmark_suite(dataset_len)` is `@st.cache_data` and gated behind the
+"Run benchmark evaluation" checkbox. It holds out 20% stratified, then for each
+loaded model computes test ROC-AUC, precision, recall, F1, per-row inference
+latency, 5-fold CV ROC-AUC, an ROC curve, a confusion matrix, and the top-10
+global feature importances.
+
+```
 {
-    "placement_status": 1,
-    "placement_label": "Placed",
-    "probability_placed": 0.9646,
-    "probability_not_placed": 0.0354,
-    "risk_level": "High Probability of Placement (Low Risk)"
+  "comparison_matrix": [ {Model, Mean CV ROC-AUC, Test ROC-AUC,
+                          Precision, Recall, F1-Score,
+                          Inference Latency (ms)}, ... ],
+  "detailed_metrics": { <model>: {test_roc_auc, roc_curve,
+                                  confusion_matrix, top_features} },
+  "best_model_name": <highest Test ROC-AUC>,
 }
 ```
 
-| Field                    | Type    | Values / Range        | Used in                            |
-|--------------------------|---------|-----------------------|------------------------------------|
-| `placement_status`       | int     | `1` (placed) / `0`    | (available but not directly used)  |
-| `placement_label`        | string  | "Placed" / "Not Placed" | Status line display             |
-| `probability_placed`     | float   | 0.0 – 1.0            | `st.metric`, gauge chart           |
-| `probability_not_placed` | float   | 0.0 – 1.0            | (available, not displayed)         |
-| `risk_level`             | string  | Free-text risk label  | Status line + recommendation base  |
+The cache key is dataset length only, so **every** model's metrics are computed
+up front and the panels pick one at render time from
+`st.session_state["active_model"]`, with `best_model_name` as the fallback.
+Importances come from `feature_importances_` (tree models) or `abs(coef_[0])`
+(logistic regression), normalized to percentages.
 
-Defaults if fields are missing: `probability_placed` → `0.0`, `placement_label` → `"Unknown"`, `risk_level` → `"Unknown"`.
+## Tabs
 
-## Recommendation Logic
+| Tab | Content | Input |
+|---|---|---|
+| 1 — Departmental pulse | Cohort KPIs, distributions, risk breakdown | `filtered_df` |
+| 2 — Per-student diagnostic | Radar chart + skill gaps. "Existing candidate" picks from the cohort; "Custom profiler" takes manual slider input | `filtered_df` or manual |
+| 3 — Cohort what-if simulator | Policy knobs → uplift and risk migration | `filtered_df` + knob deltas |
 
-`get_recommendation()` produces advice based on the backend's `risk_level`
-string (displayed as the base message) plus conditional tips from the payload:
+## Session State
 
-**Conditional tips** (checked independently):
-| Condition                      | Tip                                            |
-|--------------------------------|------------------------------------------------|
-| `backlogs > 0`                 | Clear backlogs (highest priority)              |
-| `certifications < 2`           | Pursue at least 2 certifications               |
-| `internship_count < 1`         | Secure at least one internship                 |
-| `cgpa < 7.0`                   | Raise CGPA above 7.0                           |
-| `attendance_percentage < 75`   | Improve attendance to >= 75%                   |
-| `live_projects < 1`            | Build at least one live project                |
-| `technical_skill_score < 70`   | Work on technical skills                       |
+| Key | Set by | Read by |
+|---|---|---|
+| `active_model` | Sidebar selectbox (section 3) | Every `predict_*` call, the benchmark panels, the header caption |
 
-## Gauge Chart Zones
-
-`build_gauge_chart()` converts the 0–1 probability to 0–100%:
-
-| Range      | Colour | Hex       |
-|------------|--------|-----------|
-| 0 – 40%   | Red    | `#ff4b4b` |
-| 40 – 70%  | Yellow | `#ffa726` |
-| 70 – 100% | Green  | `#66bb6a` |
-
-## Config Constants
-
-| Constant      | Value                              | Location  |
-|---------------|------------------------------------|-----------|
-| `BACKEND_URL` | `http://localhost:8000/predict`    | `app.py:30` |
+Everything else in `st.session_state` is Streamlit's own widget storage, keyed
+by the `key=` argument on each widget.

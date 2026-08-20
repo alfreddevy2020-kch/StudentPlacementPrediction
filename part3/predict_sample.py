@@ -9,13 +9,12 @@ import sys
 from pathlib import Path
 
 import joblib
-import pandas as pd
 
 # Add repo root to path so feature_engineering is accessible
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from feature_engineering import engineer_features
+from feature_engineering import CLASS_LABELS, engineer_features, make_sample_student
 
 # ============================================================
 # 1. LOAD MODEL AND PREPROCESSOR
@@ -34,21 +33,9 @@ print(f"  Loaded successfully from {preprocessor_path}.")
 # 2. DEFINE SAMPLE INPUT (8 Numerical + 2 Categorical Raw Features)
 # ============================================================
 
-sample_input = pd.DataFrame([{
-    # Numerical features (8)
-    "cgpa":                        8.1,
-    "ssc_marks":                   82.0,
-    "hsc_marks":                   85.0,
-    "aptitude_test_score":         88.0,
-    "soft_skills_rating":          4.6,
-    "internships":                 2,
-    "projects":                    3,
-    "workshops_certifications":    2,
-
-    # Categorical features (2)
-    "extracurricular_activities":  "Yes",
-    "placement_training":          "Yes",
-}])
+# Built from the canonical schema, not a literal dict, so this demo cannot
+# drift out of sync with feature_engineering.py.
+sample_input = make_sample_student()
 
 print("\nSample Input:")
 print(sample_input.to_string(index=False))
@@ -62,7 +49,7 @@ sample_processed = preprocessor.transform(sample_engineered)
 proba = model.predict_proba(sample_processed)[0]
 
 pred_status = int(proba[1] >= 0.5)
-pred_label = "Placed" if pred_status == 1 else "Not Placed"
+pred_label = CLASS_LABELS[pred_status]
 prob_placed = round(float(proba[1]), 4)
 prob_not_placed = round(float(proba[0]), 4)
 

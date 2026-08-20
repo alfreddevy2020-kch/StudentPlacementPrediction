@@ -2,40 +2,81 @@
 
 ## Project Structure
 
-Single-file Streamlit app (`app.py`) that proxies to an external FastAPI backend. No build system, no tests, no CI in this repo.
+The Streamlit dashboard is **standalone**: it loads the trained artifacts from
+disk and runs inference in-process. It does **not** call the FastAPI service in
+`api/` — there is no HTTP client, no `BACKEND_URL`, and the dashboard runs with
+the API stopped. `api/` is a separate deployable that happens to consume the
+same artifacts.
 
 ```
-dashboard/
-  app.py          # Streamlit frontend — the only file that matters
+frontend/
+  app.py               # Streamlit UI — sections 1-5, then 3 tabs, then the benchmark expander
+  batch_predictor.py   # BatchPredictor: artifact loading + cohort/single inference
+  simulator.py         # CohortWhatIfSimulator + INTERVENTION_KNOBS
   AGENTS.md
-  flow.md         # Data flow & variable reference
+  flow.md              # Data flow & module reference
 ```
+
+Shared code lives at the repo root: `feature_engineering.py` (column
+normalization + derived features) is imported by both `app.py` and
+`batch_predictor.py`.
 
 ## Running
 
 ```bash
-# Install deps (no requirements.txt exists — install manually)
-pip install streamlit requests plotly pandas pdfplumber
-
-# Start the frontend
-streamlit run app.py
+pip install -r requirements.txt      # from the repo root
+streamlit run frontend/app.py
 ```
 
-The FastAPI backend must be running separately at `http://localhost:8000` (expected endpoint: `POST /predict`). The backend is **not** part of this repo.
+Requires the model artifacts and the dataset at `data/raw/student_placement.csv`.
+`BatchPredictor` prefers the committed production bundles under
+`artifacts/production/<model>/` and falls back to the local training outputs in
+`part2/models/` and `part3/models/` (see `_resolve()` in `batch_predictor.py`).
+Three models are loaded: Random Forest (the default), Logistic Regression, and
+XGBoost.
 
 ## Key Gotchas
 
-- **Streamlit reruns the entire script on every widget change.** There is no explicit state machine; reactivity is implicit. `st.session_state` is not used in the current code.
-- **The app will show an error banner if the backend is down** — it does not crash. Do not add `sys.exit()` or `st.stop()` for backend failures; the existing `get_prediction()` handles this gracefully.
-- **Backend response contract**: expects `{"placement_status", "placement_label", "probability_placed", "probability_not_placed", "risk_level"}`. The frontend reads `probability_placed` for the gauge/metric, `placement_label` and `risk_level` for display. Missing fields default gracefully via `.get()`.
-- **JSON payload keys must stay in sync with the backend.** The keys are: `ssc_percentage`, `hsc_percentage`, `degree_percentage`, `cgpa`, `attendance_percentage`, `backlogs`, `entrance_exam_score`, `technical_skill_score`, `soft_skill_score`, `certifications`, `live_projects`, `internship_count`, `work_experience_months`, `gender`, `extracurricular_activities`. See `render_sidebar()` for the canonical mapping.
-- **`pandas` is used for multipart serialization** — `pd.Series(payload).to_json()` encodes the payload when a resume is attached. Do not remove it.
-- **`honours` is a string `"Yes"`/`"No"`, not a bool.** The backend must handle string comparison.
-- **Resume upload changes the request format.** When a PDF is uploaded, `get_prediction()` switches from `json=` to `data=` + `files=` (multipart/form-data). The backend must accept both plain JSON and multipart requests.
-- **Resume text is extracted client-side.** `pdfplumber` reads the PDF in the Streamlit process and sends the extracted text as `resume_text` to the backend. The backend receives both the raw PDF and the pre-extracted text.
-- **`st.session_state` is used for resume auto-fill.** When a new PDF is uploaded, parsed values are written to `st.session_state[key]` BEFORE the widgets are created. This causes widgets to show the parsed values. User can override by dragging/changing widgets — their manual value persists across reruns.
+- **Streamlit reruns the entire script on every widget change.** `app.py` is
+  top-level script code, not a function tree; there is no explicit state
+  machine. Anything expensive must be cached.
+- **`st.session_state["active_model"]` is the single source of truth for which
+  model runs.** It is set by the sidebar selectbox in section 3 and every
+  inference call must forward it:
+  `predictor.predict_probabilities(df, model_name=st.session_state.get("active_model"))`.
+  Panels that ignore it silently render a different model than the one the user
+  picked — this was a real bug in the benchmark expander. It is the only
+  non-widget session key the app uses.
+- **`load_system()` is `@st.cache_resource`**, so the predictor, dataframe, and
+  simulator are loaded once per process and shared across sessions. Never mutate
+  the returned objects; set `active_model` in session state instead of
+  reassigning `predictor.active_model_name`.
+- **`compute_benchmark_suite()` is `@st.cache_data` keyed on dataset length
+  alone.** Anything model-specific must be computed for *all* models inside it
+  and selected at render time — adding the selected model to the cache key would
+  re-run 5-fold CV plus the latency benchmark on every switch.
+- **Expander open/close is client-side and does not trigger a rerun.** Checking
+  an expander's state to gate expensive work never fires, so the benchmark suite
+  sits behind an explicit `st.checkbox` instead.
+- **A failed prediction calls `st.stop()` on purpose.** When the artifacts do
+  not match the schema `feature_engineering.py` produces, the app stops with a
+  remediation message rather than showing placeholder probabilities that would
+  hide the mismatch. Do not "fix" this by substituting default values.
+- **Raw columns are not model inputs.** The dataset carries 8 raw numerical and
+  2 raw categorical columns; `engineer_features()` expands these to 29 numerical
+  columns before the fitted `ColumnTransformer` sees them. Normalization maxima
+  come from the production bundle's `normalization_stats.json` so served
+  features match training scale.
 
 ## Conventions
 
-- No linter or formatter is configured. Follow the existing style: section headers with `# ---` dividers, docstrings on all functions, type hints on return values.
-- Functions are grouped by responsibility in this order: Config → Sidebar → API → Visualisation → Main.
+- `ruff` is configured at the repo root (`pyproject.toml`): line length 100,
+  rule set `E,W,F,I,UP,B,C4,SIM`. Run `ruff check .` before finishing.
+- `E402` is per-file-ignored for `frontend/app.py` and `frontend/batch_predictor.py`
+  because both must insert the repo root onto `sys.path` before importing
+  `feature_engineering`. Keep that bootstrap above the local imports.
+- Section headers use a `# ===` divider with a numbered title; tabs use the same
+  divider with a `TAB N:` title. Keep the numbering contiguous when adding or
+  removing a section.
+- Material icons in labels (`:material/bar_chart:`) and sentence casing for UI
+  copy.

@@ -38,9 +38,17 @@ ignore = [
 # imports legitimately cannot all sit at the top of the file.
 "frontend/app.py" = ["E402"]
 "frontend/batch_predictor.py" = ["E402"]
+"part2/hp_sensitivity_analysis.py" = ["E402"]
+"part2/logistic_regression_model.py" = ["E402"]
+"part2/model_comparison.py" = ["E402"]
+"part2/model_summary_report.py" = ["E402"]
+"part2/random_forest_model.py" = ["E402"]
 "part3/predict_sample.py" = ["E402"]
 "part3/xgboost_model.py" = ["E402"]
 "part4/explainability_fairness.py" = ["E402"]
+"part8/evaluation_suite.py" = ["E402"]
+"scripts/train_models_fast.py" = ["E402"]
+"tests/test_custom_csv_simulation.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["api", "feature_engineering"]

@@ -15,8 +15,10 @@ Run after:
 """
 
 import os
+import sys
 import time
 import warnings
+from pathlib import Path
 
 import joblib
 import matplotlib
@@ -42,6 +44,15 @@ from sklearn.model_selection import (
     RandomizedSearchCV,
     StratifiedKFold,
 )
+
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (python part{N}/...py puts the script's own directory on
+# sys.path, not the repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import CLASS_LABELS, TARGET_COLUMN, engineer_features, make_sample_student
 
 warnings.filterwarnings("ignore")
 
@@ -88,7 +99,8 @@ train_df   = pd.read_csv(TRAIN_PATH)
 test_df    = pd.read_csv(TEST_PATH)
 weights_df = pd.read_csv(WEIGHTS_PATH)
 
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 
 X_train = train_df.drop(columns=[TARGET]).values
 y_train = train_df[TARGET].values
@@ -271,7 +283,7 @@ y_pred  = best_xgb.predict(X_test)
 y_proba = best_xgb.predict_proba(X_test)[:, 1]
 
 print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=["Not Placed", "Placed"]))
+print(classification_report(y_test, y_pred, target_names=CLASS_LABELS))
 print(f"ROC-AUC           : {roc_auc_score(y_test, y_proba):.4f}")
 print(f"Average Precision : {average_precision_score(y_test, y_proba):.4f}")
 print(f"Brier Score       : {brier_score_loss(y_test, y_proba):.4f}")
@@ -421,8 +433,8 @@ print("  Saved: model_results/xgb_pr_curve.png")
 # --- Confusion Matrix Heatmap ---
 fig, ax = plt.subplots(figsize=(7, 5))
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-            xticklabels=["Not Placed", "Placed"],
-            yticklabels=["Not Placed", "Placed"], ax=ax)
+            xticklabels=CLASS_LABELS,
+            yticklabels=CLASS_LABELS, ax=ax)
 ax.set_xlabel("Predicted")
 ax.set_ylabel("Actual")
 ax.set_title("Confusion Matrix — XGBoost (CUDA)")
@@ -490,8 +502,6 @@ print("-" * 50)
 import shutil
 from pathlib import Path
 
-from feature_engineering import engineer_features
-
 src_prep = Path("part2/models/preprocessor.joblib")
 dst_prep = Path("part3/models/preprocessor.joblib")
 if src_prep.exists():
@@ -512,24 +522,15 @@ print("\n" + "-" * 50)
 print("[11] Sample Prediction ...")
 print("-" * 50)
 
-sample_input = pd.DataFrame([{
-    "cgpa":                        8.1,
-    "ssc_marks":                   82.0,
-    "hsc_marks":                   85.0,
-    "aptitude_test_score":         88.0,
-    "soft_skills_rating":          4.6,
-    "internships":                 2,
-    "projects":                    3,
-    "workshops_certifications":    2,
-    "extracurricular_activities":  "Yes",
-    "placement_training":          "Yes",
-}])
+# Derived from FEATURE_RANGES rather than hardcoded, so a schema change in
+# feature_engineering.py flows through without editing this script.
+sample_input = make_sample_student()
 
 if preprocessor is not None:
     sample_engineered = engineer_features(sample_input)
     sample_processed = preprocessor.transform(sample_engineered)
     sample_proba = best_xgb.predict_proba(sample_processed)[0]
-    pred_label = "Placed" if sample_proba[1] >= 0.5 else "Not Placed"
+    pred_label = CLASS_LABELS[1] if sample_proba[1] >= 0.5 else CLASS_LABELS[0]
 pred_status = 1 if sample_proba[1] >= 0.5 else 0
 
 if sample_proba[1] >= 0.9:
@@ -541,7 +542,7 @@ elif sample_proba[1] >= 0.5:
 else:
     risk = "Low Probability of Placement (High Risk)"
 
-print("\n  Input: cgpa=8.1, ssc=82.0, hsc=85.0, aptitude=88.0, ...")
+print("\n  Input:", sample_input.iloc[0].to_dict())
 print(f"  Placement Status : {pred_status}")
 print(f"  Placement Label  : {pred_label}")
 print(f"  P(Placed)        : {sample_proba[1]:.4f}")

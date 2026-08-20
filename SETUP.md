@@ -163,7 +163,7 @@ common setup failure is running with the system Python.
 | Data | `kagglehub` |
 | Plots | `matplotlib`, `seaborn`, `plotly` |
 | API | `fastapi`, `uvicorn`, `pydantic`, `httpx` |
-| Dashboard | `streamlit`, `requests`, `pdfplumber` |
+| Dashboard | `streamlit`, `plotly` |
 | Explainability | `shap` |
 | Dev/test | `pytest`, `pytest-asyncio`, `ruff` |
 
