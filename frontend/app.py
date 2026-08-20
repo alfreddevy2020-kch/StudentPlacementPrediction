@@ -47,6 +47,7 @@ from feature_engineering import (
     FEATURE_RANGES,
     TARGET_COLUMN,
     TARGET_MAP,
+    normalize_columns,
 )
 
 # =============================================================================
@@ -118,13 +119,13 @@ def load_system():
     """Load dataset, preprocessor, and all model artifacts once."""
     predictor = BatchPredictor()
     predictor.load()
-    raw_df = predictor.load_dataset()
+    default_df = predictor.load_dataset()
     simulator = CohortWhatIfSimulator(predictor)
-    return predictor, raw_df, simulator
+    return predictor, default_df, simulator
 
 
 try:
-    predictor, raw_df, simulator = load_system()
+    predictor, default_raw_df, simulator = load_system()
     system_loaded = True
 except Exception as load_err:
     system_loaded = False
@@ -144,9 +145,42 @@ with st.sidebar:
     st.caption("Student placement readiness & policy simulator")
     st.space("small")
 
-    # Dataset info
-    st.subheader(":material/dataset: Dataset")
-    st.caption(f"**{len(raw_df):,}** students • **{len(raw_df.columns)}** features")
+    # Dataset Source & Upload
+    st.subheader(":material/dataset: Student dataset")
+    uploaded_file = st.file_uploader(
+        "Upload student cohort CSV",
+        type=["csv"],
+        help="Upload a CSV with the same structure as the training dataset.",
+    )
+
+    if uploaded_file is not None:
+        try:
+            user_df = pd.read_csv(uploaded_file)
+            user_df.columns = [str(c).strip() for c in user_df.columns]
+            user_df = normalize_columns(user_df)
+            if "student_id" not in user_df.columns:
+                user_df.insert(0, "student_id", range(1, len(user_df) + 1))
+            raw_df = user_df
+            st.success(
+                f"**Uploaded cohort:** {len(raw_df):,} students • {len(raw_df.columns)} features",
+                icon=":material/check_circle:",
+            )
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
+            raw_df = default_raw_df
+    else:
+        raw_df = default_raw_df
+        st.caption(f"**Default dataset:** {len(raw_df):,} students • {len(raw_df.columns)} features")
+
+    # Sample template download
+    sample_csv = default_raw_df.head(20).to_csv(index=False).encode("utf-8")
+    st.download_button(
+        ":material/download: Download sample CSV",
+        data=sample_csv,
+        file_name="sample_student_placement.csv",
+        mime="text/csv",
+        help="Download a 20-row sample CSV matching the expected schema.",
+    )
 
     # Model selector — stored per-session, never mutates the cached singleton
     st.space("small")
@@ -171,16 +205,26 @@ with st.sidebar:
 
     # This dataset carries no demographic or department columns, so cohorts
     # are segmented on the two institutional-support flags it does provide.
+    training_options = (
+        ["ALL"] + sorted(raw_df["placement_training"].dropna().astype(str).unique().tolist())
+        if "placement_training" in raw_df.columns
+        else ["ALL"]
+    )
     selected_training = st.pills(
         "Placement training",
-        ["ALL"] + sorted(raw_df["placement_training"].dropna().unique().tolist()),
+        training_options,
         default="ALL",
         key="filter_training",
     )
 
+    extra_options = (
+        ["ALL"] + sorted(raw_df["extracurricular_activities"].dropna().astype(str).unique().tolist())
+        if "extracurricular_activities" in raw_df.columns
+        else ["ALL"]
+    )
     selected_extra = st.pills(
         "Extracurricular activities",
-        ["ALL"] + sorted(raw_df["extracurricular_activities"].dropna().unique().tolist()),
+        extra_options,
         default="ALL",
         key="filter_extra",
     )
@@ -193,13 +237,13 @@ with st.sidebar:
 
     # Apply filters
     filtered_df = raw_df.copy()
-    if selected_training and selected_training != "ALL":
+    if selected_training and selected_training != "ALL" and "placement_training" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["placement_training"] == selected_training]
-    if selected_extra and selected_extra != "ALL":
+    if selected_extra and selected_extra != "ALL" and "extracurricular_activities" in filtered_df.columns:
         filtered_df = filtered_df[
             filtered_df["extracurricular_activities"] == selected_extra
         ]
-    if selected_band and selected_band != "ALL":
+    if selected_band and selected_band != "ALL" and "cgpa" in filtered_df.columns:
         if selected_band == "< 7.0":
             filtered_df = filtered_df[filtered_df["cgpa"] < 7.0]
         elif selected_band == "7.0 – 8.0":
@@ -728,19 +772,20 @@ with tab2:
             {"column": "workshops_certifications", "label": "Certs (×33)", "scale_factor": 33.3},
         ]
 
-        # Compute placed peers benchmark. raw_df keeps the original text
-        # target ("Placed"/"NotPlaced"), so compare against the label.
+        # Compute placed peers benchmark. If raw_df has ground-truth PlacementStatus,
+        # use placed students from it; otherwise fall back to default training dataset placed peers.
         target_col = TARGET_COLUMN
         placed_mask = (
             raw_df[target_col].astype(str) == "Placed"
             if target_col in raw_df.columns
             else None
         )
-        placed_peers = (
-            raw_df[placed_mask]
-            if placed_mask is not None and placed_mask.any()
-            else raw_df
-        )
+        if placed_mask is not None and placed_mask.any():
+            placed_peers = raw_df[placed_mask]
+        elif target_col in default_raw_df.columns:
+            placed_peers = default_raw_df[default_raw_df[target_col].astype(str) == "Placed"]
+        else:
+            placed_peers = raw_df
 
         radar_categories = []
         cand_radar_vals = []
@@ -1180,24 +1225,24 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 
     bench_df = raw_df.copy()
+    has_labels = False
     if "placement_target" in bench_df.columns:
         y_bench = bench_df["placement_target"]
+        has_labels = len(y_bench.dropna().unique()) > 1
     elif TARGET_COLUMN in bench_df.columns:
         col = bench_df[TARGET_COLUMN]
         # Check for a non-numeric dtype rather than `== object`: pandas may
         # back string columns with pyarrow, which is not object dtype.
-        if pd.api.types.is_numeric_dtype(col):
-            y_bench = col
-        else:
-            y_bench = col.map(TARGET_MAP)
-            if y_bench.isnull().any():
-                raise ValueError(
-                    f"Unmapped {TARGET_COLUMN} values: "
-                    f"{col[y_bench.isnull()].unique().tolist()}"
-                )
-        y_bench = y_bench.astype(int)
-    else:
-        y_bench = pd.Series(0, index=bench_df.index)
+        y_bench = col if pd.api.types.is_numeric_dtype(col) else col.map(TARGET_MAP)
+        has_labels = not y_bench.isnull().any() and len(y_bench.dropna().unique()) > 1
+        if has_labels:
+            y_bench = y_bench.astype(int)
+
+    if not has_labels:
+        # Fall back to default reference dataset for ground-truth benchmark
+        bench_df = default_raw_df.copy()
+        col = bench_df[TARGET_COLUMN]
+        y_bench = col.map(TARGET_MAP).astype(int)
 
     X_train_b, X_test_b, y_train_b, y_test_b = train_test_split(
         bench_df, y_bench, test_size=0.20, random_state=42, stratify=y_bench
@@ -1344,6 +1389,12 @@ with bench_expander:
 
     if run_benchmark:
       try:
+        if TARGET_COLUMN not in raw_df.columns or len(raw_df[TARGET_COLUMN].dropna().unique()) <= 1:
+            st.info(
+                "Uploaded cohort has no ground-truth `PlacementStatus` labels. "
+                "Benchmark metrics are evaluated on the reference dataset.",
+                icon=":material/info:",
+            )
         bench_data = compute_benchmark_suite(len(raw_df))
         comparison_matrix = bench_data["comparison_matrix"]
         detailed_metrics = bench_data["detailed_metrics"]
