@@ -40,11 +40,16 @@ explanations meaningful.
 
 ## Held-out performance (20% test split, n = 2,000)
 
-| Model | ROC-AUC | Accuracy | F1 |
-|---|---|---|---|
-| Logistic Regression | **0.8836** | 0.7965 | 0.7697 |
-| Random Forest | 0.8750 | 0.7890 | 0.7564 |
-| XGBoost | 0.8684 | 0.7855 | 0.7542 |
+| Model | ROC-AUC | F1 | Recall | Precision |
+|---|---:|---:|---:|---:|
+| Logistic Regression | 0.8836 | 0.7697 | 0.8105 | 0.7328 |
+| Random Forest | **0.8838** | **0.7717** | **0.8117** | **0.7354** |
+| XGBoost | 0.8806 | 0.7646 | 0.8093 | 0.7247 |
+
+The committed production baselines record ROC-AUC, F1, recall, precision, and
+probability distribution; they do not store accuracy. Logistic Regression is
+the API/dashboard default by product decision, while all three models remain
+available for comparison.
 
 All three clear the 0.80 milestone.
 

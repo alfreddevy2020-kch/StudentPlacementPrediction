@@ -1,6 +1,6 @@
 # Student Placement Prediction
 
-A production-grade Machine Learning system that predicts whether a student is likely to be placed, based on academic performance, technical skills, soft skills, internships, projects, work experience, certifications, attendance, and backlogs.
+A production-grade Machine Learning system that predicts whether a student is likely to be placed from academic marks, aptitude, soft-skills rating, internships, projects, certifications, extracurricular participation, and placement-training status.
 
 [![CI](https://github.com/alfreddevy2020-kch/StudentPlacementPrediction/actions/workflows/ci.yml/badge.svg)](https://github.com/alfreddevy2020-kch/StudentPlacementPrediction/actions/workflows/ci.yml)
 
@@ -16,7 +16,7 @@ Raw Dataset → EDA → Visualisation → Preprocessing
     → Explainability & Fairness (SHAP)
     → Artifact Packaging → REST API → Streamlit Dashboard
     → CI/CD (GitHub Actions) → Cloud Deployment (Render · Streamlit Cloud)
-    → Prediction Logging (SQLite) → Drift Monitoring (PSI)
+    → Prediction Logging (SQLite) → Prediction-Distribution Shift Monitoring (PSI)
 ```
 
 ---
@@ -94,7 +94,7 @@ StudentPlacementPrediction/
 │
 ├── api/                            ← FastAPI prediction service
 │   ├── config.py                   ← artifact registry & app metadata
-│   ├── drift.py                    ← PSI drift detector
+│   ├── drift.py                    ← prediction-distribution shift monitor
 │   ├── logger.py                   ← SQLite prediction logger
 │   ├── main.py                     ← FastAPI app + endpoints
 │   ├── predictor.py                ← model loader/predictor classes
@@ -111,6 +111,7 @@ StudentPlacementPrediction/
 │
 ├── frontend/
 │   └── app.py                      ← Streamlit dashboard
+├── role5/                          ← archetypes + observational programme evidence
 │
 ├── logs/
 │   └── .gitkeep                    ← predictions.db written here at runtime (gitignored)
@@ -153,17 +154,20 @@ venv\Scripts\python.exe -m pip install -r requirements.txt
 part2\run_pipeline.bat      # downloads data → preprocesses → trains → evaluates
 ```
 
-### Key Results
+### Current production-bundle metrics
 
-| Metric | Logistic Regression | Random Forest |
-|---|---|---|
-| ROC-AUC | 0.9354 | 1.0000 |
-| F1 Score (tuned threshold) | 0.6949 | 1.0000 |
-| Avg Precision (PR-AUC) | 0.7718 | 1.0000 |
-| Brier Score | 0.1110 | 0.0042 |
-| Optimal threshold | 0.773 | 0.173 |
+Metrics below come from the committed held-out production baselines (n=2,000).
+They are not the rejected, deterministic-dataset results from earlier project
+experiments.
 
-**Top predictive features (Permutation Importance, RF):** `backlogs` · `cgpa` · `technical_skill_score` · `soft_skill_score`
+| Model | ROC-AUC | F1 | Recall | Precision |
+|---|---:|---:|---:|---:|
+| Logistic Regression | 0.8836 | 0.7697 | 0.8105 | 0.7328 |
+| Random Forest | 0.8838 | 0.7717 | 0.8117 | 0.7354 |
+| XGBoost | 0.8806 | 0.7646 | 0.8093 | 0.7247 |
+
+Logistic Regression is the API and dashboard default; Random Forest and XGBoost
+remain selectable comparison models.
 
 ---
 
@@ -200,8 +204,24 @@ part4\run_pipeline.bat
 |---|---|
 | SHAP TreeExplainer | Local + global explanations — why THIS student got their score |
 | Platt scaling / Isotonic regression | Calibrate raw XGBoost scores into trustworthy probabilities |
-| Group-wise FNR audit | Compare false negative rates across gender & extracurricular groups |
+| Group-wise FNR audit | Compare false negative rates across training and extracurricular-access groups |
 | Mitigation report | Proposed fixes if disparity detected |
+
+---
+
+## 🧪 Role 5 — Programme insights
+
+The dashboard's fifth, explicitly gated tab adds two cohort-level research
+views without replacing CSV upload:
+
+- Skill-gap archetypes from readiness-only clustering.
+- Observational placement-training evidence with propensity overlap, balance,
+  effective-sample, and uncertainty diagnostics.
+
+The scenario planner is a classifier re-scoring tool, not causal uplift
+modelling. Programme evidence is withheld when diagnostics fail, and the app
+does not make individual training-seat recommendations. See
+[Role 5 methodology](docs/role5_methodology.md).
 
 ---
 
@@ -241,22 +261,30 @@ venv\Scripts\streamlit run frontend\app.py
 |---|---|---|
 | `GET` | `/health` | Liveness probe — confirms all 3 models are loaded |
 | `GET` | `/api/v1/models` | List available model identifiers |
-| `POST` | `/api/v1/predict` | Predict placement (body: 15 features + model choice) |
-| `GET` | `/api/v1/drift` | PSI drift report for a model (`?model=xgboost&window=200`) |
+| `POST` | `/api/v1/predict` | Predict placement (10 raw fields + model choice) |
+| `GET` | `/api/v1/drift` | Prediction-distribution shift report for a model (`?model=xgboost&window=200`) |
 | `GET` | `/logs/summary` | Total prediction counts per model |
 
 Interactive docs: http://localhost:8000/docs
 
 ### Selecting a Model
 
-Every prediction request includes a `model` field:
+Every prediction request may include a `model` field. It defaults to
+`logistic_regression`; Random Forest and XGBoost remain available for comparison:
 
 ```json
 {
-  "model": "xgboost",       // "logistic_regression" | "random_forest" | "xgboost"
+  "model": "logistic_regression", // default; "random_forest" | "xgboost" also available
   "cgpa": 8.2,
-  "ssc_percentage": 75.5,
-  ...
+  "ssc_marks": 75.5,
+  "hsc_marks": 77.0,
+  "aptitude_test_score": 80.0,
+  "soft_skills_rating": 4.2,
+  "internships": 1,
+  "projects": 2,
+  "workshops_certifications": 1,
+  "extracurricular_activities": "Yes",
+  "placement_training": "No"
 }
 ```
 
@@ -273,7 +301,7 @@ artifacts/production/<model_name>/
 ├── model.joblib          ← trained classifier
 ├── preprocessor.joblib   ← fitted ColumnTransformer
 ├── manifest.json         ← training metadata (date, features, params)
-└── baseline_metrics.json ← F1, ROC-AUC, mean probability (used by drift checker)
+└── baseline_metrics.json ← F1, ROC-AUC, mean probability; regeneration adds held-out probability bins
 ```
 
 To package a newly trained model:
@@ -323,7 +351,7 @@ python scripts/smoke_test_models.py
 
 ---
 
-## 📊 Prediction Logging & Drift Monitoring
+## 📊 Prediction Logging & Prediction-Distribution Shift Monitoring
 
 ### Prediction Logging
 
@@ -335,7 +363,7 @@ curl http://localhost:8000/logs/summary
 # → {"total": 42, "by_model": {"xgboost": 30, "random_forest": 10, "logistic_regression": 2}}
 ```
 
-### Drift Detection (PSI)
+### Prediction-distribution shift detection (PSI)
 
 ```bash
 curl "http://localhost:8000/api/v1/drift?model=xgboost&window=200"
@@ -348,6 +376,11 @@ curl "http://localhost:8000/api/v1/drift?model=xgboost&window=200"
 | `warn` | PSI 0.10–0.20 or shift 0.05–0.10 | Monitor closely |
 | `alert` | PSI > 0.20 or shift > 0.10 | Initiate retraining review |
 | `insufficient_data` | < 20 predictions logged | Accumulate more traffic |
+| `baseline_unavailable` | Persisted held-out probability bins are missing | Regenerate baseline metrics; no synthetic baseline is used |
+
+This endpoint detects changes in prediction distribution, not direct model
+performance degradation. ROC-AUC, calibration, and false-negative rates need
+verified outcome feedback before they can be monitored.
 
 ---
 
@@ -380,7 +413,7 @@ Full deployment guide and retraining policy: [`docs/DEPLOYMENT.md`](docs/DEPLOYM
 
 | Trigger | Threshold |
 |---|---|
-| Drift alert | PSI > 0.20 OR mean shift > 0.10 for 3+ consecutive days |
+| Prediction-distribution shift alert | PSI > 0.20 OR mean shift > 0.10 for 3+ consecutive days |
 | F1 regression | F1 drops below 0.80 on held-out validation set |
 | Data volume | New labeled data > 20 % of original training set |
 | Calendar | Every academic semester (~6 months) |
@@ -424,7 +457,7 @@ venv\Scripts\streamlit run frontend\app.py
 | API | FastAPI + Pydantic v2 + uvicorn |
 | Frontend | Streamlit + Plotly |
 | Prediction Logging | SQLite (WAL mode) |
-| Drift Detection | PSI (Population Stability Index) |
+| Distribution Monitoring | PSI (Population Stability Index) |
 | CI/CD | GitHub Actions |
 | Linting & Formatting | Ruff |
 | Type checking | pyright |

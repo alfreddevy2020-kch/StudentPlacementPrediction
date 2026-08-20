@@ -19,7 +19,7 @@ GitHub ──push/PR──► GitHub Actions CI
                           │
                     logs/predictions.db  (SQLite on Render disk)
                           │
-                    /api/v1/drift        (PSI drift check endpoint)
+                    /api/v1/drift        (prediction-distribution shift endpoint)
 ```
 
 ---
@@ -109,7 +109,7 @@ Every successful call to `POST /api/v1/predict` is recorded in a SQLite database
 |--------|------|-------------|
 | `timestamp` | TEXT | ISO-8601 UTC |
 | `model_used` | TEXT | `xgboost`, `random_forest`, `logistic_regression` |
-| `cgpa`, `ssc_percentage`, … | REAL/INT | All 15 input features |
+| `cgpa`, `ssc_marks`, … | REAL/INT | All 10 raw input features |
 | `probability_placed` | REAL | Model output probability |
 | `placement_status` | INTEGER | 0 or 1 |
 
@@ -125,12 +125,13 @@ GET /api/v1/drift?model=xgboost&window=200
 
 ---
 
-## 4. Drift Detection
+## 4. Prediction-distribution shift monitoring
 
 ### Method: Population Stability Index (PSI)
 
 PSI measures how much the distribution of `probability_placed` has shifted from
-the training baseline.
+the held-out baseline. This is prediction-distribution monitoring, not direct
+model-performance monitoring.
 
 **Formula:**
 
@@ -148,9 +149,12 @@ PSI = Σ (actual_% − expected_%) × ln(actual_% / expected_%)
 | `warn` | PSI 0.10–0.20 **or** shift 0.05–0.10 | Monitor; inspect inputs |
 | `alert` | PSI > 0.20 **or** shift > 0.10 | Trigger retraining review |
 | `insufficient_data` | < 20 predictions logged | Wait for more traffic |
+| `baseline_unavailable` | Held-out histogram is missing | Run `scripts/generate_baseline_metrics.py` |
 
-The baseline distribution is reconstructed from `baseline_metrics.json` stored
-alongside each production artifact.
+The baseline uses persisted real held-out probability bins in
+`baseline_metrics.json`. The service will not synthesize a distribution from a
+mean and standard deviation. Capture verified outcomes separately to monitor
+ROC-AUC, calibration, and false-negative rate.
 
 ---
 

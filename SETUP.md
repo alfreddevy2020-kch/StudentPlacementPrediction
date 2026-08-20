@@ -271,11 +271,11 @@ the fast path alone is enough to get it running.
 
 ### Current held-out performance (n = 2,000)
 
-| Model | ROC-AUC | Accuracy | F1 |
-|---|---|---|---|
-| Logistic Regression | 0.8836 | 0.7965 | 0.7697 |
-| Random Forest | 0.8750 | 0.7890 | 0.7564 |
-| XGBoost | 0.8684 | 0.7855 | 0.7542 |
+| Model | ROC-AUC | F1 | Recall | Precision |
+|---|---:|---:|---:|---:|
+| Logistic Regression | 0.8836 | 0.7697 | 0.8105 | 0.7328 |
+| Random Forest | 0.8838 | 0.7717 | 0.8117 | 0.7354 |
+| XGBoost | 0.8806 | 0.7646 | 0.8093 | 0.7247 |
 
 ### Refreshing the API's committed artifacts
 
@@ -291,8 +291,9 @@ venv\Scripts\python.exe scripts\generate_baseline_metrics.py
 ```
 
 `package_model.py` recomputes the SHA-256 checksums in `manifest.json`;
-`generate_baseline_metrics.py` refreshes the drift-monitoring baselines from
-the current test split. Run both after retraining, or the API's startup
+`generate_baseline_metrics.py` persists the real held-out probability-bin
+baseline used by prediction-distribution shift monitoring. Run both after
+retraining, or the API's startup
 checksum verification will reject the bundle.
 
 ---
@@ -361,7 +362,7 @@ model exposes `predict` / `predict_proba`. Expect:
 | GET | `/health` | `{"status", "models_loaded"}` |
 | GET | `/api/v1/models` | list available model identifiers |
 | POST | `/api/v1/predict` | placement prediction |
-| GET | `/api/v1/drift?model=<name>` | PSI drift report vs. baseline |
+| GET | `/api/v1/drift?model=<name>` | prediction-distribution shift report vs. real held-out baseline |
 | GET | `/logs/summary` | prediction-log counts |
 
 ```bash

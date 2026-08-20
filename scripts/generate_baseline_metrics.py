@@ -35,6 +35,14 @@ MODEL_VERSIONS = {
     "xgboost": "2026.08.19-xgb.2",
 }
 
+PROBABILITY_BIN_EDGES = np.linspace(0.0, 1.0, 11)
+
+
+def probability_bin_counts(probabilities: np.ndarray) -> list[int]:
+    """Return real held-out probability counts for PSI reference bins."""
+    counts, _ = np.histogram(probabilities, bins=PROBABILITY_BIN_EDGES)
+    return [int(count) for count in counts]
+
 
 def main() -> int:
     if not TEST_PATH.exists():
@@ -68,6 +76,8 @@ def main() -> int:
             "precision": round(float(precision_score(y_test, preds, zero_division=0)), 4),
             "mean_probability_placed": round(float(np.mean(proba)), 4),
             "probability_standard_deviation": round(float(np.std(proba)), 4),
+            "probability_bin_edges": [float(edge) for edge in PROBABILITY_BIN_EDGES],
+            "probability_bin_counts": probability_bin_counts(proba),
         }
 
         out_path = ARTIFACT_ROOT / model_key / "baseline_metrics.json"

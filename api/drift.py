@@ -1,11 +1,11 @@
 """
 api/drift.py
 ------------
-Population Stability Index (PSI) drift detector.
+Prediction-distribution shift monitor using Population Stability Index (PSI).
 
 Overview
 --------
-Drift is measured by comparing the distribution of `probability_placed`
+Prediction-distribution shift is measured by comparing `probability_placed`
 from the *most recent N predictions* against the **baseline distribution**
 stored in each model's `baseline_metrics.json`.
 
@@ -18,7 +18,9 @@ Thresholds (industry standard):
     PSI 0.10–0.20 → moderate change      → status: "warn"
     PSI > 0.20  → significant shift      → status: "alert"
 
-Additionally we track the raw mean shift from the baseline.
+Additionally we track the raw mean shift from the baseline. This is not direct
+performance-drift monitoring: ROC-AUC, calibration, and false-negative rates
+require later verified outcome feedback.
 
 Public API
 ----------
@@ -59,7 +61,7 @@ _MIN_PREDICTIONS = 20
 # ── Data class for the drift report ───────────────────────────────────────
 @dataclass
 class DriftReport:
-    status: str  # "ok" | "warn" | "alert" | "insufficient_data"
+    status: str  # "ok" | "warn" | "alert" | "insufficient_data" | "baseline_unavailable"
     psi: float
     mean_shift: float  # |current_mean − baseline_mean|
     baseline_mean: float
@@ -103,6 +105,40 @@ def _compute_psi(
 
     psi = float(np.sum((current_pct - baseline_pct) * np.log(current_pct / baseline_pct)))
     return psi
+
+
+def _load_baseline_bin_counts(baseline_data: dict) -> tuple[np.ndarray, np.ndarray] | None:
+    """Validate persisted baseline probability bins without fabricating data."""
+    edges = baseline_data.get("probability_bin_edges")
+    counts = baseline_data.get("probability_bin_counts")
+    if not isinstance(edges, list) or not isinstance(counts, list):
+        return None
+    if len(edges) != _N_BINS + 1 or len(counts) != _N_BINS + 1 - 1:
+        return None
+    try:
+        edge_array = np.asarray(edges, dtype=float)
+        count_array = np.asarray(counts, dtype=float)
+    except (TypeError, ValueError):
+        return None
+    if (
+        not np.allclose(edge_array, np.asarray(_BIN_EDGES, dtype=float))
+        or (count_array < 0).any()
+        or count_array.sum() <= 0
+    ):
+        return None
+    return edge_array, count_array
+
+
+def _compute_psi_from_counts(
+    baseline_counts: np.ndarray, current_probs: list[float], bin_edges: np.ndarray
+) -> float:
+    """Compute PSI against real persisted histogram counts."""
+    current_counts, _ = np.histogram(current_probs, bins=bin_edges)
+    baseline_pct = baseline_counts / baseline_counts.sum()
+    current_pct = current_counts / max(current_counts.sum(), 1)
+    baseline_pct = np.clip(baseline_pct, _EPS, None)
+    current_pct = np.clip(current_pct, _EPS, None)
+    return float(np.sum((current_pct - baseline_pct) * np.log(current_pct / baseline_pct)))
 
 
 def _status_from_metrics(psi: float, shift: float) -> tuple[str, str]:
@@ -176,15 +212,20 @@ class DriftChecker:
 
         baseline_mean: float = baseline_data.get("mean_probability_placed", 0.0)
 
-        # Reconstruct a synthetic baseline distribution around the baseline mean
-        # using the saved probability distribution if present, else synthesise
-        baseline_probs: list[float] = baseline_data.get("probability_distribution", [])
-        if not baseline_probs:
-            # Fallback: generate a synthetic normal distribution around the mean
-            rng = np.random.default_rng(42)
-            std = baseline_data.get("std_probability_placed", 0.15)
-            baseline_probs = list(
-                np.clip(rng.normal(loc=baseline_mean, scale=std, size=1000), 0.0, 1.0)
+        baseline_histogram = _load_baseline_bin_counts(baseline_data)
+        if baseline_histogram is None:
+            return DriftReport(
+                status="baseline_unavailable",
+                psi=0.0,
+                mean_shift=0.0,
+                baseline_mean=baseline_mean,
+                current_mean=0.0,
+                n_predictions=0,
+                message=(
+                    f"Model '{model_key}' has no persisted real baseline probability bins. "
+                    "Run scripts/generate_baseline_metrics.py after evaluation; "
+                    "a synthetic baseline is intentionally not used."
+                ),
             )
 
         # ── Recent predictions ─────────────────────────────────────────
@@ -210,7 +251,8 @@ class DriftChecker:
         current_mean = float(np.mean(current_probs))
         mean_shift = abs(current_mean - baseline_mean)
 
-        psi = _compute_psi(baseline_probs, current_probs)
+        bin_edges, baseline_counts = baseline_histogram
+        psi = _compute_psi_from_counts(baseline_counts, current_probs, bin_edges)
         status, message = _status_from_metrics(psi, mean_shift)
 
         return DriftReport(

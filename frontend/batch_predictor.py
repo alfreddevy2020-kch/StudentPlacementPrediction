@@ -7,6 +7,7 @@ This module enables the Streamlit dashboard to operate standalone
 without the FastAPI backend server.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,7 +16,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -35,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
 # Fall back to local dev paths (part2/models, part3/models) for local runs
 # where the full training pipeline has been executed.
 PROD_DIR = BASE_DIR / "artifacts" / "production"
+DEFAULT_MODEL_NAME = "Logistic Regression"
 
 def _resolve(prod_rel: str, dev_rel: str) -> Path:
     """Return the production path if it exists, otherwise the dev path."""
@@ -42,12 +43,12 @@ def _resolve(prod_rel: str, dev_rel: str) -> Path:
     return prod if prod.exists() else BASE_DIR / dev_rel
 
 PREPROCESSOR_PATH: Path = _resolve(
-    "random_forest/preprocessor.joblib",
+    "logistic_regression/preprocessor.joblib",
     "part2/models/preprocessor.joblib",
 )
 
 STATS_PATH: Path = _resolve(
-    "random_forest/normalization_stats.json",
+    "logistic_regression/normalization_stats.json",
     "data/processed/normalization_stats.json",
 )
 
@@ -124,9 +125,9 @@ class BatchPredictor:
                 "No model artifacts found. Run the training pipeline first."
             )
 
-        # Default to Random Forest if available, else first loaded model
-        if "Random Forest" in self._models:
-            self._active_model_name = "Random Forest"
+        # Keep the dashboard's default explicit and aligned with the API.
+        if DEFAULT_MODEL_NAME in self._models:
+            self._active_model_name = DEFAULT_MODEL_NAME
         else:
             self._active_model_name = next(iter(self._models))
 

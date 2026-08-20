@@ -144,7 +144,14 @@ class TestDriftEndpoint:
     def test_drift_schema(self, client: TestClient):
         data = client.get("/api/v1/drift?model=xgboost").json()
         assert "status" in data
-        assert data["status"] in ("ok", "warn", "alert", "insufficient_data", "error")
+        assert data["status"] in (
+            "ok",
+            "warn",
+            "alert",
+            "insufficient_data",
+            "baseline_unavailable",
+            "error",
+        )
 
     def test_drift_invalid_model_422(self, client: TestClient):
         r = client.get("/api/v1/drift?model=neural_network")

@@ -39,9 +39,9 @@ class StudentInput(BaseModel):
 
     # ── Model Selection ────────────────────────────────────────────────────
     model: ModelName = Field(
-        default=ModelName.random_forest,
+        default=ModelName.logistic_regression,
         description="Prediction model to use.",
-        examples=["random_forest"],
+        examples=["logistic_regression"],
     )
 
     # ── Numerical ──────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ class StudentInput(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "model": "random_forest",
+                "model": "logistic_regression",
                 "cgpa": 7.7,
                 "ssc_marks": 70.0,
                 "hsc_marks": 74.0,

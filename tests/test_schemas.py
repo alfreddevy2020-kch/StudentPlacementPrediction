@@ -35,6 +35,10 @@ VALID_PAYLOAD = {
 
 
 class TestStudentInputValid:
+    def test_default_model_is_logistic_regression(self):
+        payload = {key: value for key, value in VALID_PAYLOAD.items() if key != "model"}
+        assert StudentInput(**payload).model == ModelName.logistic_regression
+
     def test_full_valid_payload(self):
         s = StudentInput(**VALID_PAYLOAD)
         assert s.cgpa == 7.7

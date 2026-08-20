@@ -234,15 +234,18 @@ def predict_placement(payload: StudentInput) -> PredictionResponse:
 
 @app.get(
     "/api/v1/drift",
-    summary="Model Drift Check",
+    summary="Prediction Distribution Shift Check",
     description=(
         "Computes Population Stability Index (PSI) between the baseline "
         "training distribution and the most recent *window* predictions. "
+        "This monitors prediction-distribution shift, not direct model "
+        "performance drift; performance metrics require verified outcomes. "
         "\n\n**Status meanings:**\n"
         "- `ok` — PSI < 0.10 and mean shift < 0.05 (no significant change)\n"
         "- `warn` — PSI 0.10–0.20 or shift 0.05–0.10 (monitor closely)\n"
         "- `alert` — PSI > 0.20 or shift > 0.10 (consider retraining)\n"
-        "- `insufficient_data` — fewer than 20 predictions logged yet"
+        "- `insufficient_data` — fewer than 20 predictions logged yet\n"
+        "- `baseline_unavailable` — regenerate real held-out probability bins"
     ),
     tags=["Monitoring"],
 )

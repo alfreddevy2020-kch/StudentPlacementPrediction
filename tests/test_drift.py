@@ -15,8 +15,17 @@ from api.drift import (
     _WARN_SHIFT,
     DriftReport,
     _compute_psi,
+    _compute_psi_from_counts,
+    _load_baseline_bin_counts,
     _status_from_metrics,
 )
+
+
+class _NoopLogger:
+    """Minimal logger used to test baseline validation before live lookup."""
+
+    def recent(self, model: str, n: int):  # noqa: ARG002
+        return []
 
 # ---------------------------------------------------------------------------
 # PSI calculation
@@ -52,6 +61,40 @@ class TestComputePSI:
         c = list(rng.uniform(0, 1, 100))
         psi = _compute_psi(b, c)
         assert psi >= 0.0
+
+    def test_real_persisted_bin_counts_can_be_used_directly(self):
+        baseline = {
+            "probability_bin_edges": [i / 10 for i in range(11)],
+            "probability_bin_counts": [10] * 10,
+        }
+        histogram = _load_baseline_bin_counts(baseline)
+        assert histogram is not None
+        edges, counts = histogram
+        assert _compute_psi_from_counts(counts, [0.05, 0.15] * 50, edges) >= 0.0
+
+    def test_missing_histogram_is_not_replaced_with_synthetic_values(self):
+        assert _load_baseline_bin_counts({"mean_probability_placed": 0.5}) is None
+
+
+class TestBaselineAvailability:
+    def test_missing_real_histogram_returns_a_safe_non_result(self, tmp_path):
+        import json
+
+        from api.drift import DriftChecker
+
+        metrics_path = tmp_path / "baseline_metrics.json"
+        metrics_path.write_text(
+            json.dumps({"mean_probability_placed": 0.5}), encoding="utf-8"
+        )
+        checker = DriftChecker(
+            _NoopLogger(),  # type: ignore[arg-type]
+            {"model": {"baseline_metrics": metrics_path}},
+        )
+
+        report = checker.check("model")
+
+        assert report.status == "baseline_unavailable"
+        assert "synthetic baseline" in report.message
 
 
 # ---------------------------------------------------------------------------

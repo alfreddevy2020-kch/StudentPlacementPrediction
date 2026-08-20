@@ -1,8 +1,8 @@
 ﻿# Backend API Documentation
 
 > **Scope:** This file documents the FastAPI prediction backend and its
-> integration with the Streamlit frontend — implemented as my individual
-> contribution to the Student Placement Prediction project.
+> current production-artifact contract. Historical implementation notes below
+> have been updated where they conflicted with the maintained API.
 >
 > **Existing team documentation is left unchanged:**
 > - `README.md` — project overview (Member 1)
@@ -20,7 +20,7 @@ Student Placement Prediction system. My work covers:
 |---|---|
 | **API serving** | FastAPI application with lifespan management, global error handling, and OpenAPI docs |
 | **Inference integration** | Modular predictor layer that loads joblib artifacts and runs end-to-end inference |
-| **Preprocessing / model loading** | Deserialising `preprocessor.joblib` and `random_forest_best.joblib` once at startup |
+| **Preprocessing / model loading** | Loading self-contained production bundles for Logistic Regression, Random Forest, and XGBoost |
 | **Pydantic validation** | Strict request/response schemas that mirror training-data constraints |
 | **Frontend-backend integration** | JSON contract consumed directly by the Streamlit frontend via `requests.post()` |
 
@@ -41,10 +41,13 @@ StudentPlacementPrediction/
 │   ├── main.py              ← FastAPI app, routes, lifespan
 │   ├── predictor.py         ← inference logic (load → transform → predict)
 │   └── schemas.py           ← Pydantic request / response models
-├── part2/
-│   └── models/
-│       ├── preprocessor.joblib          ← saved by preprocessing.py
-│       └── random_forest_best.joblib    ← saved by part2/random_forest_model.py
+├── artifacts/
+│   └── production/
+│       └── {logistic_regression,random_forest,xgboost}/
+│           ├── model.joblib
+│           ├── preprocessor.joblib
+│           ├── normalization_stats.json
+│           └── baseline_metrics.json
 └── frontend/
     └── app.py               ← Streamlit UI (calls POST /api/v1/predict)
 ```
@@ -60,7 +63,7 @@ Streamlit Frontend  (frontend/app.py)
         ▼
 FastAPI  (api/main.py)
         │
-        │  Pydantic validates 10 raw fields
+        │  Pydantic validates 10 raw fields + optional model selection
         ▼
 StudentInput  (api/schemas.py)
         │
@@ -72,7 +75,7 @@ preprocessor.joblib  (ColumnTransformer)
         │  OneHotEncoder    →   2 categorical features (4 dummy columns)
         │  Output: NumPy array (1 × 33)
         ▼
-RandomForestClassifier  (random_forest_best.joblib)
+Selected classifier (Logistic Regression default; Random Forest/XGBoost selectable)
         │  .predict()       →  label ∈ {0, 1}
         │  .predict_proba() →  [P(Not Placed), P(Placed)]
         ▼
@@ -92,9 +95,12 @@ Central configuration. Resolves artifact paths relative to the file's own
 location, so the server works from any working directory.
 
 ```python
-BASE_DIR = Path(__file__).resolve().parent.parent
-PREPROCESSOR_PATH = BASE_DIR / "part2" / "models" / "preprocessor.joblib"
-MODEL_PATH = BASE_DIR / "part2" / "models" / "random_forest_best.joblib"
+ARTIFACT_ROOT = Path(__file__).resolve().parent.parent / "artifacts" / "production"
+MODEL_BUNDLES = {
+    "logistic_regression": ARTIFACT_ROOT / "logistic_regression",
+    "random_forest": ARTIFACT_ROOT / "random_forest",
+    "xgboost": ARTIFACT_ROOT / "xgboost",
+}
 ```
 
 Also holds `APP_TITLE`, `APP_DESCRIPTION`, and `APP_VERSION` used by the
@@ -158,20 +164,21 @@ validate successfully but are extrapolation.
 
 | Field | Type | Description |
 |---|---|---|
-| `status` | `str` | `"healthy"` when both artifacts are loaded; `"degraded"` otherwise |
-| `preprocessor_loaded` | `bool` | `True` when `preprocessor.joblib` loaded at startup |
-| `model_loaded` | `bool` | `True` when `random_forest_best.joblib` loaded at startup |
+| `status` | `str` | `"healthy"` when all bundles load, `"degraded"` when some load, otherwise `"unavailable"` |
+| `models_loaded` | `dict[str, bool]` | Readiness by model key: Logistic Regression, Random Forest, and XGBoost |
 
 ---
 
 ### `api/predictor.py`
 
-Modular inference layer. Contains an abstract base class and the concrete
-Random Forest implementation.
+Modular inference layer. Contains an abstract base class and concrete
+Logistic Regression, Random Forest, and XGBoost implementations.
 
 ```
 BasePredictor  (ABC)
-    └── RandomForestPredictor   ← current production backend
+    ├── LogisticRegressionPredictor  ← default model
+    ├── RandomForestPredictor
+    └── XGBoostPredictor
 ```
 
 **Key internals:**
@@ -194,16 +201,16 @@ ALL_RAW_FEATURES = RAW_NUMERICAL_FEATURES + RAW_CATEGORICAL_FEATURES  # 10 total
 `engineer_features()` then adds 21 derived columns, giving the 29 numerical
 + 2 categorical (33 after one-hot) that the fitted preprocessor expects.
 
-**`RandomForestPredictor.load()`** — called once at startup:
+**Predictor bundle loading** — called once per available model at startup:
 ```python
 preprocessor = joblib.load(preprocessor_path)  # ColumnTransformer
-model = joblib.load(model_path)  # RandomForestClassifier
+model = joblib.load(model_path)  # selected classifier bundle
 ```
 
-**`RandomForestPredictor.predict()`** — called per request:
+**`BasePredictor.predict()`** — called per request:
 ```python
 df = _input_to_dataframe(data)  # StudentInput → DataFrame
-X_transformed = self._preprocessor.transform(df)  # 15 cols → 17 scaled cols
+X_transformed = self._preprocessor.transform(df)  # 31 raw/engineered columns → 33 encoded columns
 label = int(self._model.predict(X_transformed)[0])
 proba = self._model.predict_proba(X_transformed)[0]
 # proba = [P(class=0), P(class=1)]  i.e.  [P(Not Placed), P(Placed)]
@@ -215,30 +222,30 @@ proba = self._model.predict_proba(X_transformed)[0]
 
 FastAPI application entry point.
 
-**Singleton predictor** — loaded once, shared across all requests:
+**Predictor registry** — loaded once, shared across all requests:
 ```python
-_predictor: RandomForestPredictor | None = None
+_predictors: dict[str, BasePredictor] = {}
 ```
 
-**Lifespan handler** — startup deserialises both artifacts:
+**Lifespan handler** — startup deserialises every configured production bundle:
 ```python
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
-    global _predictor
-    _predictor = RandomForestPredictor.load(PREPROCESSOR_PATH, MODEL_PATH)
+    global _predictors
+    _predictors = load_available_model_bundles()
     yield  # server now serving
 ```
 
-If either artifact is missing, the server starts in a **degraded** state
-rather than crashing. `GET /health` reports `"status": "degraded"` and
-`POST /api/v1/predict` returns `503`.
+If a bundle is missing or invalid, the server starts in a **degraded** state
+rather than crashing. `GET /health` reports the readiness map, and a request
+for an unavailable selected model returns `503`.
 
 **Error handling layers:**
 
 | Layer | Trigger | HTTP code |
 |---|---|---|
 | Pydantic | Wrong type / out-of-range / missing field | `422` |
-| Route guard | `_predictor` not ready | `503` |
+| Route guard | Selected model not ready | `503` |
 | Inference | Exception inside `predict()` | `500` |
 | Global handler | Any other unhandled exception | `500` |
 
@@ -248,14 +255,17 @@ rather than crashing. `GET /health` reports `"status": "degraded"` and
 
 ### `GET /health`
 
-Liveness probe. Confirms both artifacts are loaded.
+Liveness probe. Confirms readiness of every configured model bundle.
 
 **Example response (`200 OK`):**
 ```json
 {
   "status": "healthy",
-  "preprocessor_loaded": true,
-  "model_loaded": true
+  "models_loaded": {
+    "logistic_regression": true,
+    "random_forest": true,
+    "xgboost": true
+  }
 }
 ```
 
@@ -269,7 +279,7 @@ placement prediction.
 **Example request body:**
 ```json
 {
-  "model": "random_forest",
+  "model": "logistic_regression",
   "cgpa": 7.7,
   "ssc_marks": 70.0,
   "hsc_marks": 74.0,
@@ -306,8 +316,7 @@ placement prediction.
 
 ## Frontend Integration
 
-The Streamlit frontend (`frontend/app.py`) communicates with the backend
-using the `requests` library:
+External clients can communicate with the backend using `requests`:
 
 ```python
 BACKEND_URL = "http://localhost:8000/api/v1/predict"
@@ -316,9 +325,11 @@ response = requests.post(BACKEND_URL, json=payload, timeout=10)
 result = response.json()
 ```
 
-The `payload` dict built by `render_sidebar()` contains exactly the 15
-fields required by `StudentInput`. No preprocessing is done client-side —
-all scaling and encoding happens server-side inside the API.
+`StudentInput` accepts 10 raw student fields and an optional model choice.
+No preprocessing is done client-side in this API path — scaling and encoding
+happen server-side. The current Streamlit dashboard separately uses the same
+committed bundles through `frontend/batch_predictor.py` for its local cohort
+and upload workflows.
 
 **Response fields consumed by the frontend:**
 
@@ -332,12 +343,13 @@ all scaling and encoding happens server-side inside the API.
 
 ## Model Replacement
 
-The current production model is **Random Forest** (`random_forest_best.joblib`).
+The default production model is **Logistic Regression**. Random Forest and
+XGBoost remain selectable comparison models through the same API contract.
 
 The predictor abstraction (`BasePredictor` ABC in `api/predictor.py`) allows
 the model backend to be replaced without changing the API contract.
 
-**To replace Random Forest with XGBoost (or any other model):**
+**To add or replace a selectable production model:**
 
 1. Train and save the new model as a `.joblib` file.
 2. Create a new class in `api/predictor.py` that inherits from `BasePredictor`:
@@ -349,13 +361,13 @@ the model backend to be replaced without changing the API contract.
        @property
        def is_ready(self) -> bool: ...
    ```
-3. Update `api/config.py` to point `MODEL_PATH` at the new artifact.
-4. In `api/main.py`, swap `RandomForestPredictor` for `XGBoostPredictor`.
+3. Package the self-contained bundle under `artifacts/production/<model_key>/`.
+4. Register the model key and predictor class in `api/config.py` and `api/main.py`.
 
 The `StudentInput` → `PredictionResponse` API contract, the preprocessing
 pipeline, and the Streamlit frontend remain **unchanged** provided the
 replacement model:
-- Accepts the same 17-column preprocessed NumPy array as input.
+- Accepts the same 33-column preprocessed NumPy array as input.
 - Exposes `.predict()` and `.predict_proba()` (scikit-learn-compatible API).
 
 ---
@@ -378,7 +390,7 @@ curl http://localhost:8000/health
 
 Expected:
 ```json
-{"status":"healthy","preprocessor_loaded":true,"model_loaded":true}
+{"status":"healthy","models_loaded":{"logistic_regression":true,"random_forest":true,"xgboost":true}}
 ```
 
 ---
@@ -440,7 +452,7 @@ curl -X POST http://localhost:8000/api/v1/predict `
 import requests
 
 payload = {
-    "model": "random_forest",
+    "model": "logistic_regression",
     "cgpa": 7.7, "ssc_marks": 70.0, "hsc_marks": 74.0,
     "aptitude_test_score": 80.0, "soft_skills_rating": 4.4,
     "internships": 1, "projects": 2, "workshops_certifications": 1,

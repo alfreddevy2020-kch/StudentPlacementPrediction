@@ -12,7 +12,19 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from batch_predictor import HIGH_RISK_THRESHOLD, MODERATE_RISK_THRESHOLD, BatchPredictor
+
+try:
+    from .batch_predictor import (
+        HIGH_RISK_THRESHOLD,
+        MODERATE_RISK_THRESHOLD,
+        BatchPredictor,
+    )
+except ImportError:  # Supports `streamlit run frontend/app.py`.
+    from batch_predictor import (
+        HIGH_RISK_THRESHOLD,
+        MODERATE_RISK_THRESHOLD,
+        BatchPredictor,
+    )
 
 from feature_engineering import FEATURE_RANGES
 
@@ -86,14 +98,17 @@ class CohortWhatIfSimulator:
     def __init__(self, predictor: BatchPredictor) -> None:
         self.predictor = predictor
 
-    def predict_probabilities(self, df: pd.DataFrame) -> np.ndarray:
-        """Pass-through to the batch predictor."""
-        return self.predictor.predict_probabilities(df)
+    def predict_probabilities(
+        self, df: pd.DataFrame, model_name: str | None = None
+    ) -> np.ndarray:
+        """Score a cohort with the explicitly selected classification model."""
+        return self.predictor.predict_probabilities(df, model_name=model_name)
 
     def simulate_policy_intervention(
         self,
         cohort_df: pd.DataFrame,
         interventions: Optional[dict[str, float]] = None,
+        model_name: str | None = None,
     ) -> dict[str, Any]:
         """
         Applies parameterized policy shifts on a cohort and computes
@@ -106,6 +121,9 @@ class CohortWhatIfSimulator:
         interventions : dict, optional
             {column_name: delta} mapping. Positive values boost the feature.
             Deltas are clamped to the feature's observed training range.
+        model_name : str, optional
+            Classification model used for both the baseline and edited-profile
+            scores. This is scenario scoring, not causal-effect estimation.
 
         Returns
         -------
@@ -128,7 +146,7 @@ class CohortWhatIfSimulator:
             }
 
         # 1. Baseline Predictions
-        base_probs = self.predict_probabilities(cohort_df)
+        base_probs = self.predict_probabilities(cohort_df, model_name=model_name)
         base_placed = (base_probs >= 0.50).astype(int)
 
         # 2. Apply Interventions
@@ -150,7 +168,7 @@ class CohortWhatIfSimulator:
                         sim_df[col] = np.clip(sim_df[col], lo, hi)
 
         # 3. Post-Intervention Predictions
-        sim_probs = self.predict_probabilities(sim_df)
+        sim_probs = self.predict_probabilities(sim_df, model_name=model_name)
         sim_placed = (sim_probs >= 0.50).astype(int)
 
         # 4. Compute Metrics
