@@ -102,6 +102,19 @@ FEATURE_RANGES = {
 TARGET_COLUMN = "placement_status"
 TARGET_MAP = {"NotPlaced": 0, "Placed": 1}
 
+# Human-readable class names, ordered so index == encoded target value.
+# Every downstream report (classification_report target_names, confusion-matrix
+# tick labels, predicted-label strings) reads this instead of repeating a
+# literal ["Not Placed", "Placed"], so relabelling the target is a one-line
+# change here.
+CLASS_LABELS = [
+    label for label, _ in sorted(TARGET_MAP.items(), key=lambda kv: kv[1])
+]
+
+# Levels carried by RAW_CATEGORICAL_FEATURES, and their encoding. Used both by
+# engineer_features() and by make_sample_student().
+BINARY_LEVEL_MAP = {"No": 0, "Yes": 1}
+
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Rename raw CSV headers to canonical snake_case. Safe to call twice."""
@@ -261,8 +274,8 @@ def engineer_features(df: pd.DataFrame, stats: dict | None = None) -> pd.DataFra
     ) / 3 * 100
 
     # ── Institutional support flags ─────────────────────────────────────
-    df["extracurricular_binary"] = df["extracurricular_activities"].map({"No": 0, "Yes": 1})
-    df["placement_training_binary"] = df["placement_training"].map({"No": 0, "Yes": 1})
+    df["extracurricular_binary"] = df["extracurricular_activities"].map(BINARY_LEVEL_MAP)
+    df["placement_training_binary"] = df["placement_training"].map(BINARY_LEVEL_MAP)
     df["support_index"] = df["extracurricular_binary"] + df["placement_training_binary"]
 
     # ── Composite readiness ─────────────────────────────────────────────
@@ -289,3 +302,60 @@ ENGINEERED_NUMERICAL_FEATURES = [
     "interview_readiness_score", "placement_readiness_score",
 ]
 ALL_NUMERICAL_FEATURES = RAW_NUMERICAL_FEATURES + ENGINEERED_NUMERICAL_FEATURES  # 29
+
+
+def make_sample_student(position: float = 0.75) -> pd.DataFrame:
+    """Build one representative raw student row, derived from the schema above.
+
+    Demo predictions and smoke tests used to carry their own literal dict of
+    feature values. Every one of those had to be hand-edited on a schema
+    change, and a missed edit surfaced as a confusing KeyError deep inside
+    engineer_features(). Building the row from RAW_NUMERICAL_FEATURES,
+    RAW_CATEGORICAL_FEATURES and FEATURE_RANGES means those callers follow
+    this module automatically.
+
+    Parameters
+    ----------
+    position : float
+        Where in each feature's observed training range the value sits.
+        0.0 is the weakest student the model has seen, 1.0 the strongest,
+        and the 0.75 default gives a plausibly strong candidate. Values
+        outside [0, 1] would be extrapolation, so they are rejected.
+
+    Returns
+    -------
+    pd.DataFrame
+        A single row carrying exactly ALL_RAW_FEATURES, ready for
+        engineer_features().
+    """
+    if not 0.0 <= position <= 1.0:
+        raise ValueError(
+            f"position must be within [0, 1] (the observed training range), got {position}"
+        )
+
+    missing = [c for c in RAW_NUMERICAL_FEATURES if c not in FEATURE_RANGES]
+    if missing:
+        raise RuntimeError(
+            f"FEATURE_RANGES is missing entries for {missing}. Add them when "
+            "adding a raw numerical feature - make_sample_student() and the "
+            "dashboard sliders both read from it."
+        )
+
+    row: dict = {}
+    for column in RAW_NUMERICAL_FEATURES:
+        low, high = FEATURE_RANGES[column]
+        value = low + (high - low) * position
+        # Count-style features are declared with integer bounds; keep them
+        # integral so the row stays a realistic student rather than 1.5
+        # internships.
+        if isinstance(low, int) and isinstance(high, int):
+            row[column] = int(round(value))
+        else:
+            row[column] = round(float(value), 2)
+
+    # Highest-encoded level, i.e. "Yes" - matches the strong-candidate default.
+    top_level = max(BINARY_LEVEL_MAP, key=lambda k: BINARY_LEVEL_MAP[k])
+    for column in RAW_CATEGORICAL_FEATURES:
+        row[column] = top_level
+
+    return pd.DataFrame([row])

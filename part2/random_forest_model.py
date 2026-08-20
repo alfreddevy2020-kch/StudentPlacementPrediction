@@ -14,8 +14,10 @@ Run after:
 """
 
 import os
+import sys
 import time
 import warnings
+from pathlib import Path
 
 import joblib
 import matplotlib
@@ -39,6 +41,15 @@ from sklearn.model_selection import (
     StratifiedKFold,
     learning_curve,
 )
+
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (python part{N}/...py puts the script's own directory on
+# sys.path, not the repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import CLASS_LABELS, TARGET_COLUMN
 
 warnings.filterwarnings("ignore")
 
@@ -87,7 +98,8 @@ train_df = pd.read_csv(TRAIN_PATH)
 test_df = pd.read_csv(TEST_PATH)
 weights_df = pd.read_csv(WEIGHTS_PATH)
 
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 
 X_train = train_df.drop(columns=[TARGET]).values
 y_train = train_df[TARGET].values
@@ -217,7 +229,7 @@ y_pred = best_rf.predict(X_test)
 y_proba = best_rf.predict_proba(X_test)[:, 1]
 
 print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=["Not Placed", "Placed"]))
+print(classification_report(y_test, y_pred, target_names=CLASS_LABELS))
 print(f"ROC-AUC           : {roc_auc_score(y_test, y_proba):.4f}")
 print(f"Average Precision : {average_precision_score(y_test, y_proba):.4f}")
 print(f"Brier Score       : {brier_score_loss(y_test, y_proba):.4f}")

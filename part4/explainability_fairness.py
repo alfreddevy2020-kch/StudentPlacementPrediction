@@ -124,7 +124,8 @@ def load_data():
 
     train_df = pd.read_csv(TRAIN_PATH)
     test_df = pd.read_csv(TEST_PATH)
-    target = "placement_status"
+    # Name preprocessing.py wrote the encoded target under.
+    target = TARGET_COLUMN
 
     X_train = train_df.drop(columns=[target]).values
     y_train = train_df[target].values
@@ -204,7 +205,7 @@ def run_shap_analysis(model, X_test, y_test, feature_names):
         shap_values = shap_values[1]
 
     shap_df = pd.DataFrame(shap_values, columns=feature_names)
-    shap_df["placement_status"] = y_test
+    shap_df[TARGET_COLUMN] = y_test
     shap_df.to_csv(RESULTS_DIR / "shap_values_test.csv", index=False)
     print("  Saved: explainability_results/shap_values_test.csv")
 
