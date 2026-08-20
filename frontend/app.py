@@ -1648,21 +1648,19 @@ with bench_expander:
                 fig_feat.update_layout(layout_feat)
                 st.plotly_chart(fig_feat, use_container_width=True)
 
-        # SHAP global explainability — exact game-theoretic attribution
+        # SHAP global explainability — exact game-theoretic attribution.
+        # Follows the sidebar's active model like every other single-model panel
+        # here; a second selector of its own would let this section drift away
+        # from the model that actually produced the predictions on screen.
         shap_global = bench_data["shap_global"]
+        shap_model = (
+            display_model_name
+            if display_model_name in shap_global
+            else next(iter(shap_global))
+        )
         with st.container(border=True):
-            st.markdown("#### :material/insights: SHAP global explainability")
-            shap_model = st.selectbox(
-                "Explainability model",
-                options=list(shap_global.keys()),
-                index=(
-                    list(shap_global.keys()).index(display_model_name)
-                    if display_model_name in shap_global
-                    else 0
-                ),
-                key="shap_global_model",
-                help="SHAP attribution follows this model (defaults to the "
-                "sidebar's active model).",
+            st.markdown(
+                f"#### :material/insights: SHAP global explainability ({shap_model})"
             )
             shap_data = shap_global[shap_model]
 
