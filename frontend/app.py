@@ -1603,6 +1603,41 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
     X_train_proc = predictor._preprocessor.transform(predictor._prepare_features(X_train_b))
     X_test_proc = predictor._preprocessor.transform(predictor._prepare_features(X_test_b))
 
+    # Feature names come from the shared preprocessor, so they are identical
+    # for every model - resolve them once, ahead of the per-model loop.
+    feat_names_out = []
+    for name, trans, cols in predictor._preprocessor.transformers_:
+        if name == "numerical":
+            feat_names_out.extend(cols)
+        elif name == "categorical":
+            if hasattr(trans, "get_feature_names_out"):
+                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
+            elif hasattr(trans, "categories_"):
+                for i, col in enumerate(cols):
+                    for cat in trans.categories_[i]:
+                        feat_names_out.append(f"{col}_{cat}")
+
+    def extract_top_features(model_obj) -> list:
+        """Top-10 global importances (%) for one model, or [] if unsupported."""
+        if hasattr(model_obj, "feature_importances_"):
+            raw_imp = model_obj.feature_importances_
+        elif hasattr(model_obj, "coef_"):
+            raw_imp = np.abs(model_obj.coef_[0])
+        else:
+            return []
+        total = np.sum(raw_imp)
+        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
+        f_names = (
+            feat_names_out
+            if len(feat_names_out) == len(normalized_imp)
+            else [f"Feature_{i}" for i in range(len(normalized_imp))]
+        )
+        return sorted(
+            zip(f_names, np.round(normalized_imp, 2)),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:10]
+
     comparison_matrix = []
     detailed_metrics = {}
 
@@ -1664,42 +1699,15 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
             "test_roc_auc": round(test_auc, 4),
             "roc_curve": roc_data,
             "confusion_matrix": cm,
+            "top_features": extract_top_features(m_model),
         }
 
-    # Best model feature importance extraction
     best_model_name = max(comparison_matrix, key=lambda x: x["Test ROC-AUC"])["Model"]
-    best_model_obj = predictor._models[best_model_name]
-    feat_names_out = []
-    for name, trans, cols in predictor._preprocessor.transformers_:
-        if name == "numerical":
-            feat_names_out.extend(cols)
-        elif name == "categorical":
-            if hasattr(trans, "get_feature_names_out"):
-                feat_names_out.extend(trans.get_feature_names_out(cols).tolist())
-            elif hasattr(trans, "categories_"):
-                for i, col in enumerate(cols):
-                    for cat in trans.categories_[i]:
-                        feat_names_out.append(f"{col}_{cat}")
-
-    top_features = []
-    if hasattr(best_model_obj, "feature_importances_"):
-        raw_imp = best_model_obj.feature_importances_
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
-    elif hasattr(best_model_obj, "coef_"):
-        raw_imp = np.abs(best_model_obj.coef_[0])
-        total = np.sum(raw_imp)
-        normalized_imp = (raw_imp / total) * 100.0 if total > 0 else raw_imp
-        f_names = feat_names_out if len(feat_names_out) == len(normalized_imp) else [f"Feature_{i}" for i in range(len(normalized_imp))]
-        top_features = sorted(zip(f_names, np.round(normalized_imp, 2)), key=lambda x: x[1], reverse=True)[:10]
 
     return {
         "comparison_matrix": comparison_matrix,
         "detailed_metrics": detailed_metrics,
         "best_model_name": best_model_name,
-        "top_features": top_features,
     }
 
 
@@ -1737,7 +1745,15 @@ with bench_expander:
         comparison_matrix = bench_data["comparison_matrix"]
         detailed_metrics = bench_data["detailed_metrics"]
         best_model_name = bench_data["best_model_name"]
-        top_features = bench_data.get("top_features", [])
+
+        # The single-model panels below follow the sidebar selection, not the
+        # best scorer: picking Random Forest previously still rendered the
+        # Logistic Regression breakdown whenever LR won on test ROC-AUC.
+        display_model_name = st.session_state.get("active_model", best_model_name)
+        if display_model_name not in detailed_metrics:
+            display_model_name = best_model_name
+        display_metrics = detailed_metrics[display_model_name]
+        top_features = display_metrics.get("top_features", [])
 
         model_colors = {
             "Logistic Regression": "#94A3B8",
@@ -1803,11 +1819,11 @@ with bench_expander:
 
         with col_cm, st.container(border=True):
             st.markdown(
-                f"#### :material/grid_on: Confusion matrix ({best_model_name})"
+                f"#### :material/grid_on: Confusion matrix ({display_model_name})"
             )
-            best_cm = detailed_metrics[best_model_name]["confusion_matrix"]
+            active_cm = display_metrics["confusion_matrix"]
             fig_cm = px.imshow(
-                best_cm,
+                active_cm,
                 text_auto=True,
                 labels={"x": "Predicted class", "y": "Actual class", "color": "Count"},
                 x=["Not placed (0)", "Placed (1)"],
@@ -1820,7 +1836,7 @@ with bench_expander:
         # Feature importance
         if top_features:
             with st.container(border=True):
-                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({best_model_name})")
+                st.markdown(f"#### :material/leaderboard: Global feature importance attribution ({display_model_name})")
                 f_df = pd.DataFrame(top_features, columns=["Feature", "Importance (%)"]).sort_values(by="Importance (%)", ascending=True)
 
                 fig_feat = px.bar(
