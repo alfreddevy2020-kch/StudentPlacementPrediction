@@ -1,17 +1,17 @@
 {
   "schema_version": 2,
   "model_name": "logistic_regression",
-  "model_version": "2026.08.19-lr.4",
+  "model_version": "2026.08.20-lr.1",
   "model_class": "LogisticRegression",
-  "created_at_utc": "2026-08-19T11:30:18Z",
+  "created_at_utc": "2026-08-20T08:14:38Z",
   "artifacts": {
     "preprocessor": {
       "filename": "preprocessor.joblib",
-      "sha256": "4097fe5b6d0bc0840e7ddb4e15b4f90bebe33d8418fd3cef42378ba4833c52a0"
+      "sha256": "4394fcdf85fcd97c9a4d71abf06fefb715a8c9a2e6e1b1f9eb286d39dacb0673"
     },
     "model": {
       "filename": "model.joblib",
-      "sha256": "f2fc7edf369b70fe06fa859ba9ae5d62e42509d38086b0179f967bd1b125644b"
+      "sha256": "0a33ba8cfd29c93df5966cd01d6b7f525f8489efc8658024e226ccaee55a8a7a"
     },
     "normalization_stats": {
       "filename": "normalization_stats.json",

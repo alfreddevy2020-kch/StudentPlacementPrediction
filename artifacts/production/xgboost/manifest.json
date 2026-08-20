@@ -1,17 +1,17 @@
 {
   "schema_version": 2,
   "model_name": "xgboost",
-  "model_version": "2026.08.19-xgb.4",
+  "model_version": "2026.08.20-xgb.1",
   "model_class": "XGBClassifier",
-  "created_at_utc": "2026-08-19T11:30:21Z",
+  "created_at_utc": "2026-08-20T08:15:31Z",
   "artifacts": {
     "preprocessor": {
       "filename": "preprocessor.joblib",
-      "sha256": "4097fe5b6d0bc0840e7ddb4e15b4f90bebe33d8418fd3cef42378ba4833c52a0"
+      "sha256": "4394fcdf85fcd97c9a4d71abf06fefb715a8c9a2e6e1b1f9eb286d39dacb0673"
     },
     "model": {
       "filename": "model.joblib",
-      "sha256": "c06ea2a007c9415db51e68bf8256486884ba1424d71f2bef34fd7035a25ef683"
+      "sha256": "f340d7d59dd3671b4a1d3f498b229028f6c77f30290d4b919ec24e873db18d38"
     },
     "normalization_stats": {
       "filename": "normalization_stats.json",
