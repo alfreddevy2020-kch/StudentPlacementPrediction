@@ -434,11 +434,14 @@ X_test_df = pd.DataFrame(
     index=X_test.index
 ).reset_index(drop=True)
 
+# Write the encoded target under the canonical name. Every downstream stage
+# reads TARGET_COLUMN from feature_engineering, so this is the single point
+# that decides what the processed CSVs call their label column.
 train_processed = X_train_df.copy()
-train_processed["placement_status"] = y_train.reset_index(drop=True)
+train_processed[TARGET_COLUMN] = y_train.reset_index(drop=True)
 
 test_processed = X_test_df.copy()
-test_processed["placement_status"] = y_test.reset_index(drop=True)
+test_processed[TARGET_COLUMN] = y_test.reset_index(drop=True)
 
 # 1. Save processed CSVs
 os.makedirs("data/processed", exist_ok=True)

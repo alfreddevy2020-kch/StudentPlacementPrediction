@@ -15,8 +15,10 @@ Run after preprocessing.py has been executed.
 """
 
 import os
+import sys
 import time
 import warnings
+from pathlib import Path
 
 import matplotlib
 import pandas as pd
@@ -38,6 +40,15 @@ from sklearn.metrics import (
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 warnings.filterwarnings("ignore")
+
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (Python puts the script's own directory on sys.path, not the
+# repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import TARGET_COLUMN
 
 # ============================================================
 # 0. STYLE
@@ -79,7 +90,8 @@ train_df = pd.read_csv("data/processed/train_processed.csv")
 test_df = pd.read_csv("data/processed/test_processed.csv")
 weights_df = pd.read_csv("data/processed/class_weights.csv")
 
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 X_train = train_df.drop(columns=[TARGET]).values
 y_train = train_df[TARGET].values
 X_test = test_df.drop(columns=[TARGET]).values

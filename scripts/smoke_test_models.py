@@ -26,6 +26,7 @@ from api.predictor import (
     XGBoostPredictor,
 )
 from api.schemas import ModelName, StudentInput
+from feature_engineering import make_sample_student
 
 PREDICTOR_TYPES = {
     "logistic_regression": LogisticRegressionPredictor,
@@ -33,19 +34,15 @@ PREDICTOR_TYPES = {
     "xgboost": XGBoostPredictor,
 }
 
-SAMPLE_INPUT = StudentInput(
-    model=ModelName.random_forest,
-    cgpa=7.7,
-    ssc_marks=70.0,
-    hsc_marks=74.0,
-    aptitude_test_score=80.0,
-    soft_skills_rating=4.4,
-    internships=1,
-    projects=2,
-    workshops_certifications=1,
-    extracurricular_activities="Yes",
-    placement_training="Yes",
-)
+# Built from the canonical schema rather than a literal kwargs list, so adding
+# or renaming a raw feature in feature_engineering.py cannot leave this smoke
+# test silently constructing an outdated payload. .item() unwraps the numpy
+# scalars a DataFrame row yields, which Pydantic will not coerce.
+_sample_row = {
+    name: (value.item() if hasattr(value, "item") else value)
+    for name, value in make_sample_student().iloc[0].items()
+}
+SAMPLE_INPUT = StudentInput(model=ModelName.random_forest, **_sample_row)
 
 PASSED = []
 FAILED = []
