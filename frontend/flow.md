@@ -24,9 +24,9 @@ Section 4: predictor.predict_probabilities(filtered_df, model_name=...)
         │
         ▼
    ┌────┴─────┬──────────────┬──────────────┬─────────────────┐
- Tab 1      Tab 2          Tab 3          Tab 4        Benchmark expander
- cohort     per-student    what-if        CSV upload   compute_benchmark_suite()
- analytics  diagnostic     simulator                   @st.cache_data
+  Tab 1      Tab 2          Tab 3          Benchmark expander
+  cohort     per-student    what-if        compute_benchmark_suite()
+  analytics  diagnostic     simulator      @st.cache_data
 ```
 
 Every widget interaction reruns the whole script, so the pipeline above fires on
@@ -144,12 +144,6 @@ Importances come from `feature_importances_` (tree models) or `abs(coef_[0])`
 | 1 — Departmental pulse | Cohort KPIs, distributions, risk breakdown | `filtered_df` |
 | 2 — Per-student diagnostic | Radar chart + skill gaps. "Existing candidate" picks from the cohort; "Custom profiler" takes manual slider input | `filtered_df` or manual |
 | 3 — Cohort what-if simulator | Policy knobs → uplift and risk migration | `filtered_df` + knob deltas |
-| 4 — Upload & analyze cohort | CSV upload, schema validation, template download, scored analytics | uploaded CSV |
-
-Tab 4 is the bulk-input path. `normalize_columns()` accepts either raw
-mixed-case headers (`AptitudeTestScore`) or snake_case; missing required columns
-are reported back in the user's original naming via a reversed
-`COLUMN_RENAME_MAP`.
 
 ## Session State
 

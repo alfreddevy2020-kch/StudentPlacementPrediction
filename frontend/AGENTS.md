@@ -10,7 +10,7 @@ same artifacts.
 
 ```
 frontend/
-  app.py               # Streamlit UI — sections 1-5, then 4 tabs, then the benchmark expander
+  app.py               # Streamlit UI — sections 1-5, then 3 tabs, then the benchmark expander
   batch_predictor.py   # BatchPredictor: artifact loading + cohort/single inference
   simulator.py         # CohortWhatIfSimulator + INTERVENTION_KNOBS
   AGENTS.md
@@ -67,10 +67,6 @@ XGBoost.
   columns before the fitted `ColumnTransformer` sees them. Normalization maxima
   come from the production bundle's `normalization_stats.json` so served
   features match training scale.
-- **Uploaded CSVs accept either header style.** `normalize_columns()` maps raw
-  mixed-case headers (`AptitudeTestScore`) to snake_case, so Tab 4 validates
-  against the normalized names and maps them back through `COLUMN_RENAME_MAP`
-  for user-facing error messages.
 
 ## Conventions
 
