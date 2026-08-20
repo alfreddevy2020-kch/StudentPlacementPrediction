@@ -43,6 +43,8 @@ from batch_predictor import (
 )
 from simulator import INTERVENTION_KNOBS, CohortWhatIfSimulator
 
+import shap_explainer
+
 from feature_engineering import (
     FEATURE_RANGES,
     TARGET_COLUMN,
@@ -135,6 +137,53 @@ except Exception as load_err:
         "and the dataset is at `data/raw/student_placement.csv`."
     )
     st.stop()
+
+
+@st.cache_resource(show_spinner="Preparing SHAP explainers...")
+def build_shap_explainers() -> dict:
+    """
+    One exact SHAP explainer per loaded model, built on a fixed background
+    sample of the default dataset. Cached per process; the explainers are
+    read-only once built.
+    """
+    background_df = default_raw_df.sample(n=100, random_state=42)
+    bg_matrix, _ = predictor.prepare_model_matrix(background_df)
+    explainers = {}
+    for m_name in predictor.available_models:
+        model = predictor._models[m_name]
+        explainers[m_name] = shap_explainer.build_explainer(
+            model, background=bg_matrix.to_numpy()
+        )
+    return explainers
+
+
+@st.cache_data(show_spinner="Computing SHAP attribution...")
+def compute_local_shap(model_name: str, student_dict_key: str) -> dict:
+    """
+    Local SHAP explanation for one candidate profile. ``student_dict_key`` is
+    a stable string serialization of the profile so widget changes re-key the
+    cache. Explainers come from the cached per-process ``build_shap_explainers``.
+    """
+    import json
+
+    student_dict = json.loads(student_dict_key)
+    explainer = build_shap_explainers()[model_name]
+    df = pd.DataFrame([student_dict])
+    transformed, engineered = predictor.prepare_model_matrix(df)
+
+    shap_output = explainer.shap_values(transformed.to_numpy())
+    shap_row = shap_explainer.extract_shap_values(shap_output)[0]
+    base_value = shap_explainer.extract_base_value(explainer.expected_value)
+    display_values = shap_explainer.make_display_values(
+        engineered, list(transformed.columns)
+    ).iloc[0]
+
+    return {
+        "shap_values": shap_row,
+        "base_value": base_value,
+        "feature_names": list(transformed.columns),
+        "display_values": display_values.tolist(),
+    }
 
 
 # =============================================================================
@@ -1015,6 +1064,57 @@ with tab2:
                 with r_right:
                     st.metric("Uplift", rem["uplift"])
 
+    # SHAP local explanation — why did this model predict what it predicted?
+    st.space("small")
+    st.markdown("### :material/insights: SHAP local explanation")
+    st.caption(
+        "Game-theoretic attribution of each feature's contribution to this "
+        "candidate's predicted placement probability, for the active model."
+    )
+
+    run_shap_local = st.checkbox(
+        "Run SHAP explanation for this candidate",
+        key="run_shap_local",
+        help="Computes exact SHAP contributions for the selected candidate "
+        "using the active model. Heavy for the first run, cached afterwards.",
+    )
+
+    if run_shap_local:
+        active_model = st.session_state.get("active_model")
+        if active_model not in predictor.available_models:
+            st.warning(
+                f":material/warning: Model `{active_model}` is not loaded. "
+                "Pick one from the sidebar."
+            )
+        else:
+            try:
+                import json
+
+                student_key = json.dumps(
+                    {k: v for k, v in student_data.items()}, sort_keys=True
+                )
+                local_shap = compute_local_shap(active_model, student_key)
+            except Exception as shap_err:
+                st.warning(
+                    f":material/warning: Could not compute SHAP explanation: {shap_err}"
+                )
+            else:
+                with st.container(border=True):
+                    fig_waterfall = shap_explainer.waterfall_figure(
+                        shap_values_row=np.asarray(local_shap["shap_values"]),
+                        base_value=local_shap["base_value"],
+                        feature_names=local_shap["feature_names"],
+                        display_values=local_shap["display_values"],
+                        title=f"SHAP waterfall — why {active_model} predicts {candidate_prob_pct}%",
+                    )
+                    st.plotly_chart(fig_waterfall, use_container_width=True)
+                    st.caption(
+                        "Red bars push toward **placed**, blue bars push toward "
+                        "**not placed**. The dotted line is the model output "
+                        "f(x) on the log-odds scale; positive log-odds (>0) "
+                        "mean a placement probability above 50%."
+                    )
+
 
 # =============================================================================
 # TAB 3: COHORT WHAT-IF POLICY SIMULATOR
@@ -1352,10 +1452,36 @@ def compute_benchmark_suite(dataset_len: int) -> dict:
 
     best_model_name = max(comparison_matrix, key=lambda x: x["Test ROC-AUC"])["Model"]
 
+    # SHAP global explainability — exact contributions for every model on a
+    # fixed subsample of the held-out test split. Stored per model and
+    # selected at render time, matching the cache-key convention of the rest
+    # of the benchmark suite.
+    shap_global = {}
+    n_shap = min(400, len(X_test_proc))
+    shap_idx = np.random.RandomState(0).choice(len(X_test_proc), size=n_shap, replace=False)
+    X_shap = X_test_proc[shap_idx]
+    X_eng_shap = predictor._prepare_features(X_test_b).iloc[shap_idx]
+    background = X_train_proc[:100]
+
+    for m_name, m_model in predictor._models.items():
+        explainer = shap_explainer.build_explainer(m_model, background=background)
+        shap_values = shap_explainer.extract_shap_values(
+            explainer.shap_values(X_shap)
+        )
+        display_values = shap_explainer.make_display_values(
+            X_eng_shap, feat_names_out
+        ).to_numpy()
+        shap_global[m_name] = {
+            "shap_values": shap_values,
+            "display_values": display_values,
+            "feature_names": feat_names_out,
+        }
+
     return {
         "comparison_matrix": comparison_matrix,
         "detailed_metrics": detailed_metrics,
         "best_model_name": best_model_name,
+        "shap_global": shap_global,
     }
 
 
@@ -1505,6 +1631,47 @@ with bench_expander:
                 layout_feat["showlegend"] = False
                 fig_feat.update_layout(layout_feat)
                 st.plotly_chart(fig_feat, use_container_width=True)
+
+        # SHAP global explainability — exact game-theoretic attribution
+        shap_global = bench_data["shap_global"]
+        with st.container(border=True):
+            st.markdown("#### :material/insights: SHAP global explainability")
+            shap_model = st.selectbox(
+                "Explainability model",
+                options=list(shap_global.keys()),
+                index=(
+                    list(shap_global.keys()).index(display_model_name)
+                    if display_model_name in shap_global
+                    else 0
+                ),
+                key="shap_global_model",
+                help="SHAP attribution follows this model (defaults to the "
+                "sidebar's active model).",
+            )
+            shap_data = shap_global[shap_model]
+
+            col_bee, col_bar = st.columns([3, 2])
+            with col_bee, st.container(border=True):
+                fig_bee = shap_explainer.beeswarm_figure(
+                    shap_values=shap_data["shap_values"],
+                    feature_names=shap_data["feature_names"],
+                    display_values=shap_data["display_values"],
+                    title=f"SHAP beeswarm — {shap_model}",
+                )
+                st.plotly_chart(fig_bee, use_container_width=True)
+                st.caption(
+                    "Each dot is one student from the held-out sample. "
+                    "**Red = high feature value**, **blue = low**. Right of "
+                    "zero pushes toward placement; left pushes away."
+                )
+
+            with col_bar, st.container(border=True):
+                fig_shap_bar = shap_explainer.mean_shap_bar_figure(
+                    shap_values=shap_data["shap_values"],
+                    feature_names=shap_data["feature_names"],
+                    title=f"SHAP mean |impact| — {shap_model}",
+                )
+                st.plotly_chart(fig_shap_bar, use_container_width=True)
 
       except Exception as bench_err:
         st.warning(

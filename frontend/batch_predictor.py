@@ -197,6 +197,27 @@ class BatchPredictor:
         probs = model.predict_proba(X_transformed)[:, 1]
         return probs
 
+    def prepare_model_matrix(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Build the exact model input matrix for a cohort.
+
+        Returns ``(transformed_df, engineered_df)``:
+        - ``transformed_df`` — the fitted ColumnTransformer output (scaled
+          numericals + one-hot categoricals) with plain feature names, ready
+          for ``predict``/``predict_proba`` and SHAP computations.
+        - ``engineered_df`` — the pre-transform frame (29 numerical + 2
+          categorical columns) used by SHAP charts to display unscaled,
+          human-readable feature values.
+        """
+        engineered = self._prepare_features(df)
+        X = self._preprocessor.transform(engineered)
+        names = [
+            col.replace("numerical__", "").replace("categorical__", "")
+            for col in self._preprocessor.get_feature_names_out()
+        ]
+        transformed = pd.DataFrame(X, columns=names, index=df.index)
+        return transformed, engineered
+
     def predict_single(
         self, student_dict: dict, model_name: str | None = None
     ) -> float:
