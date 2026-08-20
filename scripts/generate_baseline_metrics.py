@@ -25,9 +25,12 @@ from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_sco
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from feature_engineering import TARGET_COLUMN  # noqa: E402
+
 ARTIFACT_ROOT = REPO_ROOT / "artifacts" / "production"
 TEST_PATH = REPO_ROOT / "data" / "processed" / "test_processed.csv"
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 
 MODEL_VERSIONS = {
     "logistic_regression": "2026.08.19-lr.2",

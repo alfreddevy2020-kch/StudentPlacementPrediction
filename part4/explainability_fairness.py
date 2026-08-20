@@ -79,8 +79,20 @@ def load_all_models():
 
 def load_data():
     """Load processed train/test matrices and raw test rows for fairness groups."""
+<<<<<<< HEAD
     train_df, test_df = pd.read_csv(TRAIN_PATH), pd.read_csv(TEST_PATH)
     target = "placement_status"
+=======
+    if not TRAIN_PATH.exists() or not TEST_PATH.exists():
+        raise FileNotFoundError(
+            "Processed data not found. Run preprocessing.py first."
+        )
+
+    train_df = pd.read_csv(TRAIN_PATH)
+    test_df = pd.read_csv(TEST_PATH)
+    # Name preprocessing.py wrote the encoded target under.
+    target = TARGET_COLUMN
+>>>>>>> 50fa5c0293b6b0ab346f052f06e081bec48955e4
 
     X_train, y_train = train_df.drop(columns=[target]).values, train_df[target].values
     X_test, y_test = test_df.drop(columns=[target]).values, test_df[target].values
@@ -118,6 +130,7 @@ def run_shap_analysis(models, X_train, X_test, y_test, feature_names):
             shap_vals = explainer.shap_values(X_test)
             shap_values = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
 
+<<<<<<< HEAD
         # Save Plot
         plt.figure(figsize=(10, 8))
         shap.summary_plot(shap_values, pd.DataFrame(X_test, columns=feature_names), show=False, max_display=15)
@@ -125,6 +138,89 @@ def run_shap_analysis(models, X_train, X_test, y_test, feature_names):
         plt.tight_layout()
         plt.savefig(RESULTS_DIR / f"shap_summary_{model_name}.png")
         plt.close()
+=======
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_test)
+
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+
+    shap_df = pd.DataFrame(shap_values, columns=feature_names)
+    shap_df[TARGET_COLUMN] = y_test
+    shap_df.to_csv(RESULTS_DIR / "shap_values_test.csv", index=False)
+    print("  Saved: explainability_results/shap_values_test.csv")
+
+    mean_abs_shap = (
+        pd.DataFrame({"feature": feature_names, "mean_abs_shap": np.abs(shap_values).mean(axis=0)})
+        .sort_values("mean_abs_shap", ascending=False)
+        .reset_index(drop=True)
+    )
+    mean_abs_shap.to_csv(RESULTS_DIR / "shap_global_importance.csv", index=False)
+    print("  Saved: explainability_results/shap_global_importance.csv")
+
+    # Global summary (beeswarm)
+    plt.figure(figsize=(10, 8))
+    shap.summary_plot(
+        shap_values,
+        pd.DataFrame(X_test, columns=feature_names),
+        show=False,
+        max_display=15,
+    )
+    plt.title("SHAP Summary — Global Feature Impact on Placement Probability")
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "shap_summary_plot.png")
+    plt.close()
+    print("  Saved: explainability_results/shap_summary_plot.png")
+
+    # Global bar plot
+    plt.figure(figsize=(10, 7))
+    shap.summary_plot(
+        shap_values,
+        pd.DataFrame(X_test, columns=feature_names),
+        plot_type="bar",
+        show=False,
+        max_display=15,
+    )
+    plt.title("SHAP Mean |Impact| — Top Features")
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "shap_bar_plot.png")
+    plt.close()
+    print("  Saved: explainability_results/shap_bar_plot.png")
+
+    # Local waterfall — pick an interesting placed student with moderate probability
+    y_proba = model.predict_proba(X_test)[:, 1]
+    placed_idx = np.where(y_test == 1)[0]
+    if len(placed_idx) > 0:
+        # Student whose probability is closest to 0.75 (not trivially perfect)
+        candidate_idx = placed_idx[
+            np.argsort(np.abs(y_proba[placed_idx] - 0.75))
+        ][0]
+    else:
+        candidate_idx = 0
+
+    explanation = shap.Explanation(
+        values=shap_values[candidate_idx],
+        base_values=explainer.expected_value
+        if not isinstance(explainer.expected_value, (list, np.ndarray))
+        else explainer.expected_value[1]
+        if isinstance(explainer.expected_value, (list, np.ndarray))
+        else explainer.expected_value,
+        data=X_test[candidate_idx],
+        feature_names=feature_names,
+    )
+
+    plt.figure(figsize=(10, 6))
+    shap.plots.waterfall(explanation, max_display=12, show=False)
+    plt.title(f"SHAP Waterfall — Student #{candidate_idx} (local explanation)")
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "shap_waterfall_sample.png")
+    plt.close()
+    print("  Saved: explainability_results/shap_waterfall_sample.png")
+
+    top_features = mean_abs_shap.head(5)["feature"].tolist()
+    print(f"\n  Top 5 SHAP drivers: {', '.join(top_features)}")
+    return shap_values, mean_abs_shap
+>>>>>>> 50fa5c0293b6b0ab346f052f06e081bec48955e4
 
 
 def run_calibration(models, X_train, y_train, X_test, y_test):

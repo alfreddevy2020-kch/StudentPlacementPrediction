@@ -13,8 +13,10 @@ Run after all 3 model scripts have completed:
 """
 
 import os
+import sys
 import warnings
 from datetime import datetime
+from pathlib import Path
 
 import joblib
 import matplotlib
@@ -33,6 +35,15 @@ from sklearn.metrics import (
 )
 
 warnings.filterwarnings("ignore")
+
+# Add repo root to path so feature_engineering is importable when this script
+# is run directly (Python puts the script's own directory on sys.path, not the
+# repo root).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from feature_engineering import TARGET_COLUMN
 
 # ============================================================
 # 0. STYLE
@@ -77,7 +88,8 @@ rf = joblib.load("part2/models/random_forest_best.joblib")
 test_df = pd.read_csv("data/processed/test_processed.csv")
 train_df = pd.read_csv("data/processed/train_processed.csv")
 
-TARGET = "placement_status"
+# Name preprocessing.py wrote the encoded target under.
+TARGET = TARGET_COLUMN
 X_test = test_df.drop(columns=[TARGET]).values
 y_test = test_df[TARGET].values
 X_train = train_df.drop(columns=[TARGET]).values
