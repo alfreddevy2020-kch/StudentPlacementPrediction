@@ -22,7 +22,11 @@ from feature_engineering import (
 # 1. LOAD DATASET
 # ============================================================
 
-INPUT_FILE = "data/raw/student_placement.csv"
+INPUT_FILE = (
+    "data/raw/synthetic_placement_dataset.csv"
+    if os.path.exists("data/raw/synthetic_placement_dataset.csv")
+    else "data/raw/student_placement.csv"
+)
 
 # load_raw_dataset() also snake_cases the raw CSV headers, so every
 # downstream consumer sees the same canonical column names.

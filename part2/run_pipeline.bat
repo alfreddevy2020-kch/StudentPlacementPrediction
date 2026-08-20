@@ -26,10 +26,14 @@ if not exist "part2\models" mkdir "part2\models"
 if not exist "part2\model_results" mkdir "part2\model_results"
 echo.
 
-REM Step 1: Download dataset
-echo [STEP 1/5] Downloading dataset ...
-%PYTHON% download_dataset.py
-IF %ERRORLEVEL% NEQ 0 (echo ERROR: download_dataset.py failed. & pause & exit /b 1)
+REM Step 1: Verify raw dataset
+echo [STEP 1/5] Checking raw dataset ...
+if not exist "data\raw\synthetic_placement_dataset.csv" if not exist "data\raw\student_placement.csv" (
+    echo ERROR: Raw dataset not found in data\raw\
+    echo Please place synthetic_placement_dataset.csv in data\raw\
+    pause
+    exit /b 1
+)
 
 REM Step 2: Preprocessing
 echo.

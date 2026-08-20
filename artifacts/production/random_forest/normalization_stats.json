@@ -1,5 +1,6 @@
 {
-  "internships_max": 2.0,
-  "projects_max": 3.0,
-  "workshops_certifications_max": 3.0
+  "internships_max": 4.0,
+  "projects_max": 8.0,
+  "certifications_max": 10.0,
+  "work_experience_months_max": 33.0
 }

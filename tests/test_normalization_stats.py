@@ -33,13 +33,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 RAW_ROW = {
     "cgpa": [7.7],
-    "ssc_marks": [70.0],
-    "hsc_marks": [74.0],
+    "ssc_percentage": [70.0],
+    "hsc_percentage": [74.0],
+    "degree_percentage": [72.0],
     "aptitude_test_score": [80.0],
+    "technical_skill_score": [75.0],
     "soft_skills_rating": [4.4],
+    "attendance_percentage": [85.0],
+    "backlogs": [0],
     "internships": [1],
     "projects": [2],
-    "workshops_certifications": [1],
+    "certifications": [1],
+    "work_experience_months": [6],
+    "gender": ["Male"],
+    "department": ["CS"],
     "extracurricular_activities": ["Yes"],
     "placement_training": ["Yes"],
 }
@@ -47,8 +54,9 @@ RAW_ROW = {
 # Matches data/processed/normalization_stats.json for the current dataset.
 TRAINING_STATS = {
     "internships_max": 2.0,
-    "projects_max": 3.0,
-    "workshops_certifications_max": 3.0,
+    "projects_max": 4.0,
+    "certifications_max": 2.0,
+    "work_experience_months_max": 12.0,
 }
 
 
@@ -57,9 +65,10 @@ class TestExplicitStats:
         """A single row must be scaled by the training maxima, not its own."""
         out = engineer_features(pd.DataFrame(RAW_ROW), stats=TRAINING_STATS)
         assert out["internships_normalized"][0] == pytest.approx(1 / 2)
-        assert out["projects_normalized"][0] == pytest.approx(2 / 3)
-        assert out["workshops_normalized"][0] == pytest.approx(1 / 3)
-        # The value that used to read 100.0 on a fresh clone.
+        assert out["projects_normalized"][0] == pytest.approx(2 / 4)
+        assert out["certifications_normalized"][0] == pytest.approx(1 / 2)
+        assert out["work_experience_normalized"][0] == pytest.approx(6 / 12)
+        # (1/2 + 2/4 + 1/2 + 6/12) / 4 * 100 = 2.0 / 4 * 100 = 50.0
         assert out["portfolio_strength"][0] == pytest.approx(50.0)
 
     def test_single_row_matches_the_same_row_inside_a_cohort(self):

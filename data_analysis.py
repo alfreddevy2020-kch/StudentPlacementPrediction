@@ -20,7 +20,11 @@ from feature_engineering import (
 # LOAD DATASET
 # ============================================================
 
-file_path = "data/raw/student_placement.csv"
+file_path = (
+    "data/raw/synthetic_placement_dataset.csv"
+    if os.path.exists("data/raw/synthetic_placement_dataset.csv")
+    else "data/raw/student_placement.csv"
+)
 
 df = load_raw_dataset(file_path)
 

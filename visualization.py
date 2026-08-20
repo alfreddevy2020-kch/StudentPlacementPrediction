@@ -24,7 +24,11 @@ from feature_engineering import (
 # CONFIGURATION
 # ============================================================
 
-DATA_FILE = "data/raw/student_placement.csv"
+DATA_FILE = (
+    "data/raw/synthetic_placement_dataset.csv"
+    if os.path.exists("data/raw/synthetic_placement_dataset.csv")
+    else "data/raw/student_placement.csv"
+)
 OUTPUT_DIR = "visualizations"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)

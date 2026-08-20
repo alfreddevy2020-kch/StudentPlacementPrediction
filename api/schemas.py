@@ -13,7 +13,7 @@ distribution inputs from reaching the model silently.
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ── Model Selection Enum ────────────────────────────────────────────────────
 
@@ -28,13 +28,9 @@ class ModelName(str, Enum):
 
 class StudentInput(BaseModel):
     """
-    10 raw student features expected by the prediction endpoint.
+    17 raw student features expected by the prediction endpoint.
 
     **Do not include** `student_id` or `placement_status`.
-
-    Bounds are the widest sensible range for each field. The model's actual
-    training range is narrower (see FEATURE_RANGES in feature_engineering.py);
-    values outside it are accepted but are extrapolation.
     """
 
     # ── Model Selection ────────────────────────────────────────────────────
@@ -46,38 +42,73 @@ class StudentInput(BaseModel):
 
     # ── Numerical ──────────────────────────────────────────────────────────
     cgpa: float = Field(..., ge=0.0, le=10.0, examples=[7.7],
-                        description="Cumulative GPA on a 10-point scale. Trained on 6.5-9.1.")
-    ssc_marks: float = Field(..., ge=0.0, le=100.0, examples=[70.0],
-                             description="Class 10 (SSC) percentage. Trained on 55-90.")
-    hsc_marks: float = Field(..., ge=0.0, le=100.0, examples=[74.0],
-                             description="Class 12 (HSC) percentage. Trained on 57-88.")
+                        description="Cumulative GPA on a 10-point scale.")
+    ssc_percentage: float | None = Field(default=None, ge=0.0, le=100.0, examples=[70.0],
+                                         description="Class 10 (SSC) percentage.")
+    ssc_marks: float | None = Field(default=None, ge=0.0, le=100.0, examples=[70.0],
+                                    description="Alias for ssc_percentage.")
+    hsc_percentage: float | None = Field(default=None, ge=0.0, le=100.0, examples=[74.0],
+                                         description="Class 12 (HSC) percentage.")
+    hsc_marks: float | None = Field(default=None, ge=0.0, le=100.0, examples=[74.0],
+                                    description="Alias for hsc_percentage.")
+    degree_percentage: float = Field(default=68.0, ge=0.0, le=100.0, examples=[72.0],
+                                     description="Undergraduate degree percentage.")
     aptitude_test_score: float = Field(..., ge=0.0, le=100.0, examples=[80.0],
-                                       description="Aptitude/mock-test score. Trained on 60-90.")
+                                       description="Aptitude/mock-test score.")
+    technical_skill_score: float = Field(default=65.0, ge=0.0, le=100.0, examples=[75.0],
+                                         description="Technical skill assessment score (0-100).")
     soft_skills_rating: float = Field(..., ge=0.0, le=5.0, examples=[4.4],
-                                      description="Soft-skills rating on a 5-point scale. Trained on 3.0-4.8.")
-    internships: int = Field(..., ge=0, le=10, examples=[1],
-                             description="Completed internships. Trained on 0-2.")
-    projects: int = Field(..., ge=0, le=20, examples=[2],
-                          description="Completed projects. Trained on 0-3.")
-    workshops_certifications: int = Field(..., ge=0, le=20, examples=[1],
-                                          description="Workshops/certifications earned. Trained on 0-3.")
+                                      description="Soft-skills rating on a 5-point scale.")
+    attendance_percentage: float = Field(default=80.0, ge=0.0, le=100.0, examples=[85.0],
+                                         description="College attendance percentage.")
+    backlogs: int = Field(default=0, ge=0, le=20, examples=[0],
+                          description="Number of backlogs/arrears.")
+    internships: int = Field(default=0, ge=0, le=10, examples=[1],
+                             description="Completed internships.")
+    projects: int = Field(default=1, ge=0, le=20, examples=[2],
+                          description="Completed projects.")
+    certifications: int | None = Field(default=None, ge=0, le=20, examples=[1],
+                                       description="Certifications earned.")
+    workshops_certifications: int | None = Field(default=None, ge=0, le=20, examples=[1],
+                                                 description="Alias for certifications.")
+    work_experience_months: int = Field(default=0, ge=0, le=120, examples=[6],
+                                        description="Work experience in months.")
 
     # ── Categorical ─────────────────────────────────────────────────────────
-    extracurricular_activities: Literal["Yes", "No"]
-    placement_training: Literal["Yes", "No"]
+    gender: Literal["Female", "Male"] = Field(default="Male", description="Gender demographic.")
+    placement_training: Literal["Yes", "No"] = Field(default="Yes", description="Institutional placement training.")
+    extracurricular_activities: Literal["Yes", "No"] = Field(default="Yes", description="Extracurricular participation.")
+    department: Literal["CE", "CS", "ChemE", "ECE", "EE", "IT", "ME"] = Field(default="CS", description="Department/discipline.")
+
+    @model_validator(mode="after")
+    def populate_aliases(self) -> "StudentInput":
+        if self.ssc_percentage is None:
+            self.ssc_percentage = self.ssc_marks if self.ssc_marks is not None else 70.0
+        if self.hsc_percentage is None:
+            self.hsc_percentage = self.hsc_marks if self.hsc_marks is not None else 70.0
+        if self.certifications is None:
+            self.certifications = self.workshops_certifications if self.workshops_certifications is not None else 1
+        return self
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "model": "random_forest",
                 "cgpa": 7.7,
-                "ssc_marks": 70.0,
-                "hsc_marks": 74.0,
+                "ssc_percentage": 70.0,
+                "hsc_percentage": 74.0,
+                "degree_percentage": 72.0,
                 "aptitude_test_score": 80.0,
+                "technical_skill_score": 75.0,
                 "soft_skills_rating": 4.4,
+                "attendance_percentage": 85.0,
+                "backlogs": 0,
                 "internships": 1,
                 "projects": 2,
-                "workshops_certifications": 1,
+                "certifications": 1,
+                "work_experience_months": 6,
+                "gender": "Male",
+                "department": "CS",
                 "extracurricular_activities": "Yes",
                 "placement_training": "Yes",
             }

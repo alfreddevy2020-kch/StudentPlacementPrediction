@@ -92,6 +92,7 @@ logs/
 
 # Keep raw dataset out of GitHub if required by its license
 !data/raw/student_placement.csv
+!data/raw/synthetic_placement_dataset.csv
 
 # Generated processed datasets
 data/processed/

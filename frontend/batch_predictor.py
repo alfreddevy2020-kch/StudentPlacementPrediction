@@ -246,4 +246,4 @@ class BatchPredictor:
     @staticmethod
     def load_dataset() -> pd.DataFrame:
         """Load the raw placement dataset with canonical snake_case columns."""
-        return load_raw_dataset(BASE_DIR / "data" / "raw" / "student_placement.csv")
+        return load_raw_dataset()

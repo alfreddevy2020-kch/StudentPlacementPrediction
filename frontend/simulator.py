@@ -21,10 +21,28 @@ from feature_engineering import FEATURE_RANGES
 
 INTERVENTION_KNOBS = [
     {
+        "column": "technical_skill_score",
+        "label": "Technical Upskilling BootCamp (+score)",
+        "min": 0.0,
+        "max": 25.0,
+        "step": 1.0,
+        "default": 0.0,
+        "group": "technical",
+    },
+    {
         "column": "aptitude_test_score",
         "label": "Aptitude Coaching Programme (+points)",
         "min": 0.0,
         "max": 25.0,
+        "step": 1.0,
+        "default": 0.0,
+        "group": "academic",
+    },
+    {
+        "column": "attendance_percentage",
+        "label": "Attendance Mentorship Drive (+%)",
+        "min": 0.0,
+        "max": 20.0,
         "step": 1.0,
         "default": 0.0,
         "group": "academic",
@@ -57,7 +75,7 @@ INTERVENTION_KNOBS = [
         "group": "experiential",
     },
     {
-        "column": "workshops_certifications",
+        "column": "certifications",
         "label": "Sponsored Certification Drive (+certs)",
         "min": 0.0,
         "max": 3.0,

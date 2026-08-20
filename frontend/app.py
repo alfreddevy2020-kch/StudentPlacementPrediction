@@ -252,8 +252,20 @@ with st.sidebar:
     st.space("small")
     st.subheader(":material/filter_alt: Cohort filters")
 
-    # This dataset carries no demographic or department columns, so cohorts
-    # are segmented on the two institutional-support flags it does provide.
+    # Department filter
+    if "department" in raw_df.columns:
+        dept_options = ["ALL"] + sorted(raw_df["department"].dropna().astype(str).unique().tolist())
+        selected_dept = st.pills("Department", dept_options, default="ALL", key="filter_dept")
+    else:
+        selected_dept = "ALL"
+
+    # Gender filter
+    if "gender" in raw_df.columns:
+        gender_options = ["ALL"] + sorted(raw_df["gender"].dropna().astype(str).unique().tolist())
+        selected_gender = st.pills("Gender", gender_options, default="ALL", key="filter_gender")
+    else:
+        selected_gender = "ALL"
+
     training_options = (
         ["ALL"] + sorted(raw_df["placement_training"].dropna().astype(str).unique().tolist())
         if "placement_training" in raw_df.columns
@@ -278,7 +290,7 @@ with st.sidebar:
         key="filter_extra",
     )
 
-    # Academic band filter — derived, gives a department-style breakdown
+    # Academic band filter — derived, gives a score breakdown
     cgpa_band_options = ["ALL", "< 7.0", "7.0 – 8.0", "> 8.0"]
     selected_band = st.pills(
         "CGPA band", cgpa_band_options, default="ALL", key="filter_band"
@@ -286,6 +298,10 @@ with st.sidebar:
 
     # Apply filters
     filtered_df = raw_df.copy()
+    if selected_dept and selected_dept != "ALL" and "department" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["department"] == selected_dept]
+    if selected_gender and selected_gender != "ALL" and "gender" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["gender"] == selected_gender]
     if selected_training and selected_training != "ALL" and "placement_training" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["placement_training"] == selected_training]
     if selected_extra and selected_extra != "ALL" and "extracurricular_activities" in filtered_df.columns:

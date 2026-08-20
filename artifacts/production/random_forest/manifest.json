@@ -1,21 +1,21 @@
 {
   "schema_version": 2,
   "model_name": "random_forest",
-  "model_version": "2026.08.19-rf.4",
+  "model_version": "2026.08.20-rf.1",
   "model_class": "RandomForestClassifier",
-  "created_at_utc": "2026-08-19T11:30:20Z",
+  "created_at_utc": "2026-08-20T17:24:20Z",
   "artifacts": {
     "preprocessor": {
       "filename": "preprocessor.joblib",
-      "sha256": "4097fe5b6d0bc0840e7ddb4e15b4f90bebe33d8418fd3cef42378ba4833c52a0"
+      "sha256": "c6b032b95f9e29bd364f803ea9bcdba6e4b0e94cf9fa9cc41698d30558bb4322"
     },
     "model": {
       "filename": "model.joblib",
-      "sha256": "a1d93fea17cd5cb758de91c5e3a2f4d8440ba7050de50a8962fd8538ede2596c"
+      "sha256": "a2102a51c99072b9fffd22d6157d83a830e5196d899d7235674145b3ea011436"
     },
     "normalization_stats": {
       "filename": "normalization_stats.json",
-      "sha256": "02324cad09baa02f091ef1d1f847d626192dc2703d9adb7a7070836125fc89a9"
+      "sha256": "ebdfb9129ecc30bed1a281434565f821993cad0422bc111e8e02fca5f5d3eb0f"
     }
   }
 }

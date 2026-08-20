@@ -37,6 +37,7 @@ import pandas as pd
 
 from api.schemas import PredictionResponse, StudentInput
 from feature_engineering import (
+    CATEGORICAL_LEVELS,
     FEATURE_RANGES,
     NORM_STATS_FILENAME,
     RAW_CATEGORICAL_FEATURES,
@@ -53,7 +54,7 @@ _SAMPLE_VALID_RECORD = {
     name: [(lo + hi) / 2] for name, (lo, hi) in FEATURE_RANGES.items()
 }
 for _cat in RAW_CATEGORICAL_FEATURES:
-    _SAMPLE_VALID_RECORD[_cat] = ["Yes"]
+    _SAMPLE_VALID_RECORD[_cat] = [CATEGORICAL_LEVELS[_cat][0]]
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
