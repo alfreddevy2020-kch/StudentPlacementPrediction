@@ -44,7 +44,6 @@ from batch_predictor import (
 from simulator import INTERVENTION_KNOBS, CohortWhatIfSimulator
 
 import shap_explainer
-
 from feature_engineering import (
     FEATURE_RANGES,
     TARGET_COLUMN,
@@ -1106,9 +1105,7 @@ with tab2:
             try:
                 import json
 
-                student_key = json.dumps(
-                    {k: v for k, v in student_data.items()}, sort_keys=True
-                )
+                student_key = json.dumps(dict(student_data), sort_keys=True)
                 local_shap = compute_local_shap(active_model, student_key)
             except Exception as shap_err:
                 st.warning(

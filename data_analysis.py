@@ -7,6 +7,8 @@ Driven by the canonical feature lists in feature_engineering.py rather than
 hardcoded column names, so a future dataset change updates this analysis by
 editing one module instead of every section here.
 """
+import os
+
 import pandas as pd
 
 from feature_engineering import (

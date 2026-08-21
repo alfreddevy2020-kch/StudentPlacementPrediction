@@ -8,15 +8,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 from shap_explainer import (
+    beeswarm_figure,
     build_explainer,
     extract_base_value,
     extract_shap_values,
     make_display_values,
     mean_abs_shap,
+    mean_shap_bar_figure,
     prettify_feature_name,
     waterfall_figure,
-    beeswarm_figure,
-    mean_shap_bar_figure,
 )
 
 pytest.importorskip("shap")

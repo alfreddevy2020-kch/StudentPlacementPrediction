@@ -24,15 +24,7 @@ import pandas as pd
 import shap
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from sklearn.metrics import (
-    accuracy_score,
-    brier_score_loss,
-    confusion_matrix,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings("ignore")

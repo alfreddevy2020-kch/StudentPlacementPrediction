@@ -19,7 +19,7 @@ scaled matrix the model consumes.
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -44,7 +44,7 @@ def is_linear_model(model: object) -> bool:
     return any(marker in class_name for marker in LINEAR_MODEL_MARKERS)
 
 
-def build_explainer(model: object, background: Optional[np.ndarray] = None):
+def build_explainer(model: object, background: np.ndarray | None = None):
     """
     Build the fastest exact SHAP explainer for ``model``.
 
@@ -226,7 +226,7 @@ def waterfall_figure(
     shap_values_row: np.ndarray,
     base_value: float,
     feature_names: Sequence[str],
-    display_values: Optional[Sequence[object]] = None,
+    display_values: Sequence[object] | None = None,
     max_display: int = 12,
     title: str = "SHAP waterfall — how each feature moved the prediction",
 ) -> go.Figure:
@@ -301,7 +301,7 @@ def waterfall_figure(
 def beeswarm_figure(
     shap_values: np.ndarray,
     feature_names: Sequence[str],
-    display_values: Optional[np.ndarray] = None,
+    display_values: np.ndarray | None = None,
     max_display: int = 15,
     title: str = "SHAP beeswarm — global feature impact direction",
 ) -> go.Figure:

@@ -46,6 +46,7 @@ ignore = [
 "part3/predict_sample.py" = ["E402"]
 "part3/xgboost_model.py" = ["E402"]
 "part4/explainability_fairness.py" = ["E402"]
+"part4/shap_analysis.py" = ["E402"]
 "part8/evaluation_suite.py" = ["E402"]
 "scripts/train_models_fast.py" = ["E402"]
 "tests/test_custom_csv_simulation.py" = ["E402"]

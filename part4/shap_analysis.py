@@ -47,7 +47,6 @@ if str(REPO_ROOT) not in sys.path:
 # ---------------------------------------------------------------------
 
 import joblib
-
 import matplotlib
 
 # Use a non-interactive backend because this script saves PNG files.
@@ -63,7 +62,6 @@ from shap_explainer import (
     extract_base_value,
     extract_shap_values,
 )
-
 
 # ---------------------------------------------------------------------
 # Configuration
