@@ -230,22 +230,29 @@ with st.sidebar:
         help="Download a 20-row sample CSV matching the expected schema.",
     )
 
-    # Model selector — stored per-session, never mutates the cached singleton
+    # Model selector — stored per-session, never mutates the cached singleton.
+    # Bound to session state through `key`, deliberately: a keyless selectbox
+    # derives its internal widget id from its arguments, `index` among them.
+    # Computing `index` from st.session_state["active_model"] while only
+    # writing that key *after* the widget kept the id one run behind the value,
+    # so any rerun arriving before this block finished (the st.stop() paths
+    # below, or a second interaction landing mid-run) handed the widget an id
+    # it had no stored value for and it fell back to the `index` default —
+    # the selection visibly snapped back and had to be made twice.
     st.space("small")
     st.subheader(":material/psychology: Inference engine")
     model_names = predictor.available_models
-    st.session_state.setdefault("active_model", predictor.active_model_name)
+    # Seed (or repair) the key before the widget reads it: with `key` set,
+    # Streamlit raises if session state holds a value outside `options`, which
+    # a stale session can carry over when the loaded model set changes.
+    if st.session_state.get("active_model") not in model_names:
+        st.session_state["active_model"] = predictor.active_model_name
     selected_model_name = st.selectbox(
         "Active model",
         options=model_names,
-        index=(
-            model_names.index(st.session_state["active_model"])
-            if st.session_state["active_model"] in model_names
-            else 0
-        ),
+        key="active_model",
         help="Select classification model to drive all dashboard predictions.",
     )
-    st.session_state["active_model"] = selected_model_name
 
     # Cohort filters — pills for binary/ternary options
     st.space("small")
