@@ -1,5 +1,7 @@
 # Core Data Analysis & Machine Learning
-numpy>=1.24.0,<2.0.0
+# numpy must be >=2: shap >= 0.50 (below) requires it, and a `<2.0.0` cap here
+# made this file unsatisfiable (pip ResolutionImpossible).
+numpy>=2.0.0
 pandas>=2.0.0
 scikit-learn==1.9.0
 scipy>=1.11.0
